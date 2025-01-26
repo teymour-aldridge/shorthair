@@ -1,0 +1,20 @@
+[package]
+name = "email"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+db = { path = "../db" }
+lettre = { version = "0.11.10", features = ["tokio1", "tokio1-native-tls"] }
+rocket = "0.5.1"
+uuid = { version = "1.11.0", features = ["v7"] }
+
+[dependencies.diesel]
+features = [
+    "sqlite",
+    "returning_clauses_for_sqlite_3_35",
+    "chrono",
+    "r2d2",
+    "uuid",
+]
+version = "2.2.0"
