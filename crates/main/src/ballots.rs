@@ -32,7 +32,7 @@ pub struct BallotTeam {
     s2: u16,
 }
 
-#[get("/sessions/<session_id>/makeballot")]
+#[get("/spars/<session_id>/makeballot")]
 /// Allows a judge to submit their ballot.
 ///
 /// Requires the user to be
@@ -218,7 +218,7 @@ pub struct BallotForm {
     ow: u16,
 }
 
-#[post("/sessions/<session_id>/makeballot", data = "<form>")]
+#[post("/spars/<session_id>/makeballot", data = "<form>")]
 pub async fn do_submit_ballot(
     session_id: String,
     user: User,

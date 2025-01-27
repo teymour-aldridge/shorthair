@@ -1,6 +1,6 @@
 use chrono::{NaiveDateTime, Utc};
 use db::{
-    inst::Group,
+    group::Group,
     schema::{group_members, groups, spar_series, spars},
     spar::{Spar, SparSeries},
     user::User,
@@ -15,11 +15,12 @@ use rocket::{
     form::Form,
     response::{status::Unauthorized, Redirect},
 };
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::html::page_of_body;
 
-#[get("/internals/<internal_id>")]
+#[get("/spar_series/<internal_id>")]
 /// Displays an overview of the current internals.
 pub async fn internal_page(
     internal_id: String,
@@ -63,12 +64,12 @@ pub async fn internal_page(
                     @if let Some(description) = &spar_series.description {
                         p { (description) }
                     }
-                    a href=(format!("/internals/{}/makesess", spar_series.public_id)) type="button" class="btn btn-primary" { "Create new session" }
+                    a href=(format!("/spar_series/{}/makesess", spar_series.public_id)) type="button" class="btn btn-primary" { "Create new session" }
                     @for session in &sessions {
                         div class="card" style="width: 18rem;" {
                             div class="card-body" {
                                 h5 class="card-title" { "Session of " span class="render-date" { (session.start_time.format("%Y-%m-%d %H:%M:%S")) } }
-                                a href=(format!("/sessions/{}", session.public_id)) class="card-link" { "View session" }
+                                a href=(format!("/spars/{}", session.public_id)) class="card-link" { "View session" }
                             }
                         }
                     }
@@ -84,7 +85,7 @@ pub async fn internal_page(
     .await
 }
 
-#[get("/internals/<internal_id>/makesess")]
+#[get("/spar_series/<internal_id>/makesess")]
 /// Create a new session page.
 pub async fn make_session_page(
     internal_id: String,
@@ -130,13 +131,13 @@ pub async fn make_session_page(
     .await
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, Serialize, Debug)]
 pub struct MakeSessionForm {
-    start_time: String,
-    is_open: Option<String>,
+    pub start_time: String,
+    pub is_open: Option<String>,
 }
 
-#[post("/internals/<internal_id>/makesess", data = "<form>")]
+#[post("/spar_series/<internal_id>/makesess", data = "<form>")]
 /// Create a new internals session.
 pub async fn do_make_session(
     internal_id: String,
@@ -204,7 +205,7 @@ pub async fn do_make_session(
                     .unwrap();
 
                 return Ok(Some(Ok(Err(Redirect::to(format!(
-                    "/sessions/{}",
+                    "/spars/{}",
                     public_id
                 ))))));
             } else {

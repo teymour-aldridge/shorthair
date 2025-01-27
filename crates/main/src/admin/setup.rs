@@ -5,6 +5,7 @@ use diesel::prelude::*;
 use maud::Markup;
 use rand::rngs::OsRng;
 use rocket::{form::Form, response::Redirect};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::html::{error_403, page_of_body};
@@ -67,12 +68,12 @@ pub async fn setup_page(db: DbConn) -> Markup {
     .await
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, Serialize)]
 pub struct SetupForm {
-    username: String,
-    email: String,
-    password: String,
-    password2: String,
+    pub username: String,
+    pub email: String,
+    pub password: String,
+    pub password2: String,
 }
 
 #[post("/admin/setup", data = "<form>")]

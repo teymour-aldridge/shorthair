@@ -37,3 +37,28 @@ debater fashion text me on Facebook Messenger.
         serve copies of them to requesting clients.
       - By acting as a reverse proxy, we can identify API calls which require us
         to evict parts of the cache, and do so automatically.
+
+## Development notes
+
+### Overview
+
+The application is intentionally simple. All data is stored in an SQLite
+database. Database migrations are stored in `migrations`. To run the migrations
+run `diesel migration run --database-url sqlite://sqlite.db`. To run the server
+use `cargo run`.
+
+### Running tests
+
+To run the tests, use
+
+```
+cargo test
+```
+
+Note that this only runs the manual tests, and some saved output from previous
+runs of the fuzzer (read: automatic test case generator). To run the fuzzer run
+the command
+
+```
+TODO
+```

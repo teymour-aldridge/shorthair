@@ -1,9 +1,10 @@
+use arbitrary::Arbitrary;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, sql_types::Bool, sqlite::Sqlite};
 
 use crate::schema::magic_links;
 
-#[derive(Debug, Queryable)]
+#[derive(Debug, Queryable, Arbitrary)]
 pub struct MagicLink {
     pub id: i64,
     pub code: String,

@@ -1,6 +1,6 @@
 use chrono::Utc;
 use db::{
-    inst::{Group, GroupMember},
+    group::{Group, GroupMember},
     schema::{group_members, groups, spar_series},
     user::User,
     DbConn,
@@ -15,6 +15,7 @@ use rocket::{
     form::{Form, FromForm},
     response::{Flash, Redirect},
 };
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::page_of_body;
@@ -47,10 +48,10 @@ pub async fn create_group_page(user: User) -> Markup {
     page_of_body(create_group_form(None), Some(user))
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, Serialize)]
 pub struct CreateGroupForm {
-    name: String,
-    website: Option<String>,
+    pub name: String,
+    pub website: Option<String>,
 }
 
 #[post("/groups/new", data = "<group>")]
@@ -149,7 +150,7 @@ pub async fn view_groups(
                     @if is_admin {
                         ul {
                             li {
-                                a href={"/groups/"(group.public_id)"/internals/new"} { "New internal spar" }
+                                a href={"/groups/"(group.public_id)"/spar_series/new"} { "New internal spar" }
                             }
                         }
                     }
@@ -163,7 +164,7 @@ pub async fn view_groups(
     .await
 }
 
-#[get("/groups/<inst_id>/internals/new")]
+#[get("/groups/<inst_id>/spar_series/new")]
 pub async fn new_internals_page(
     inst_id: String,
     user: User,
@@ -231,80 +232,69 @@ pub async fn new_internals_page(
     })
 }
 
-#[derive(FromForm, Debug)]
-pub struct CreateInternalForm {
-    title: String,
-    description: String,
-    speakers_per_team: i64,
+#[derive(FromForm, Serialize, Debug)]
+pub struct CreateSparSeriesForm {
+    pub title: String,
+    pub description: Option<String>,
+    pub speakers_per_team: i64,
 }
 
-#[post("/groups/<inst_id>/internals/new", data = "<form>")]
-pub async fn do_create_internals(
-    inst_id: String,
+#[post("/groups/<group_id>/spar_series/new", data = "<form>")]
+pub async fn do_create_spar_series(
+    group_id: String,
     user: User,
     db: DbConn,
-    form: Form<CreateInternalForm>,
+    form: Form<CreateSparSeriesForm>,
 ) -> Option<Result<Flash<Redirect>, Markup>> {
-    let stage_1 = db
-        .run(move |conn| {
-            let inst = groups::table
-                .filter(groups::public_id.eq(inst_id.clone()))
+    db.run(move |conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let group = match groups::table
+                .filter(groups::public_id.eq(group_id.clone()))
                 .get_result::<Group>(conn)
-                .optional()
-                .unwrap();
-            inst.map(move |inst| {
-                let auth = select(exists(
-                    groups::table
-                        .filter(groups::public_id.eq(inst_id))
-                        .inner_join(group_members::table)
-                        .filter(group_members::user_id.eq(user.id))
-                        .filter(GroupMember::has_signing_power())
-                        .or_filter(GroupMember::is_admin()),
+                .optional()?
+            {
+                Some(group) => group,
+                None => return Ok(None),
+            };
+
+            let auth = select(exists(
+                groups::table
+                    .filter(groups::public_id.eq(group_id))
+                    .inner_join(group_members::table)
+                    .filter(group_members::user_id.eq(user.id))
+                    .filter(GroupMember::has_signing_power())
+                    .or_filter(GroupMember::is_admin()),
+            ))
+            .get_result::<bool>(conn)
+            .unwrap();
+
+            if !auth {
+                return Ok(Some(Ok(Flash::error(
+                    Redirect::to("/"),
+                    "Error: you do not have permission to do that!",
+                ))));
+            }
+
+            let public_id = Uuid::now_v7().to_string();
+
+            let uuid = insert_into(spar_series::table)
+                .values((
+                    spar_series::public_id.eq(public_id),
+                    spar_series::title.eq(&form.title),
+                    spar_series::description.eq(&form.description),
+                    spar_series::speakers_per_team.eq(form.speakers_per_team),
+                    spar_series::group_id.eq(group.id),
+                    spar_series::created_at.eq(Utc::now().naive_utc()),
                 ))
-                .get_result::<bool>(conn)
-                .unwrap();
+                .returning(spar_series::public_id)
+                .get_result::<String>(conn)?;
 
-                let (group, t) = (inst, auth);
-
-                if !t {
-                    return Either::Right(Ok(Flash::error(
-                        Redirect::to("/"),
-                        "Error: you do not have permission to do that!",
-                    )));
-                }
-
-                let public_id = Uuid::now_v7().to_string();
-
-                Either::Left((group, public_id))
-            })
+            Ok(Some(Ok(Flash::success(
+                Redirect::to(format!("/spar_series/{}", uuid)),
+                "Created that internal!",
+            ))))
         })
-        .await;
-
-    match stage_1 {
-        Some(Either::Right(res)) => return Some(res),
-        Some(Either::Left((group, public_id))) => {
-            db.run(move |conn| {
-                let uuid = insert_into(spar_series::table)
-                    .values((
-                        spar_series::public_id.eq(public_id),
-                        spar_series::title.eq(&form.title),
-                        spar_series::description.eq(&form.description),
-                        spar_series::speakers_per_team
-                            .eq(form.speakers_per_team),
-                        spar_series::group_id.eq(group.id),
-                        spar_series::created_at.eq(Utc::now().naive_utc()),
-                    ))
-                    .returning(spar_series::public_id)
-                    .get_result::<String>(conn)
-                    .unwrap();
-
-                Some(Ok(Flash::success(
-                    Redirect::to(format!("/internals/{}", uuid)),
-                    "Created that internal!",
-                )))
-            })
-            .await
-        }
-        None => return None,
-    }
+        .unwrap()
+    })
+    .await
 }

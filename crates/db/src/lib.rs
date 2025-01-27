@@ -1,4 +1,4 @@
-pub mod inst;
+pub mod group;
 pub mod magic_link;
 /// Database schema
 pub mod schema;

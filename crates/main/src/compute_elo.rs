@@ -1,14 +1,7 @@
-use std::{collections::HashMap, time::Duration};
-
-use regex::Regex;
-use rocket::tokio::time::sleep;
-use tabbycat_api::{types::Speaker, Client};
-
-async fn pause() {
-    sleep(Duration::from_millis(10)).await;
-}
+use std::collections::HashMap;
 
 /// Contains speaks for each speaker in the round in question.
+// todo: use the native SQL types
 pub struct Room {
     og: (usize, usize),
     oo: (usize, usize),
@@ -18,130 +11,6 @@ pub struct Room {
     oo_speaks: (u8, u8),
     cg_speaks: (u8, u8),
     co_speaks: (u8, u8),
-}
-
-// struct Rounds(Vec<Room>);
-
-/// Loads rooms from Tabbycat.
-///
-/// Note that an important invariant is
-///     round(room1).time <= round(room2).time
-///     => index of room1 <= index of room2
-pub async fn load_rounds_from_tabbycat(
-    client: &Client,
-    tournament_slug: &str,
-) -> (Vec<Room>, HashMap<i64, Speaker>) {
-    let mut rooms = Vec::new();
-    let rounds = client
-        .api_v1_tournaments_rounds_list(tournament_slug, None, None)
-        .await
-        .unwrap()
-        .into_inner()
-        .0;
-
-    pause().await;
-
-    for round in rounds {
-        if round.completed != Some(true) {
-            // todo: log and return
-            continue;
-        }
-        let round_seq = round.seq;
-        let debates = client
-            .api_v1_tournaments_rounds_pairings_list(
-                tournament_slug,
-                round_seq,
-                None,
-                None,
-            )
-            .await
-            .unwrap()
-            .into_inner();
-        pause().await;
-
-        for debate in debates.iter() {
-            let ballots = client
-                .api_v1_tournaments_rounds_pairings_ballots_list(
-                    tournament_slug,
-                    round_seq,
-                    debate.id,
-                    Some(true),
-                    None,
-                    None,
-                )
-                .await
-                .unwrap()
-                .into_inner()
-                .0;
-            // ensure we wait at least 10ms between requests
-            pause().await;
-
-            // todo: log and warn if there are multiple ballots
-            let ballot = ballots[0].clone();
-            let teams = ballot.result.sheets[0].teams.clone();
-
-            // todo: this needs to be fixed (as we are using 8 teams)
-            let og = teams[0].clone();
-            let oo = teams[1].clone();
-            let cg = teams[2].clone();
-            let co = teams[3].clone();
-
-            rooms.push(Room {
-                og: (
-                    team_url_to_id(&og.speeches[0].speaker),
-                    team_url_to_id(&og.speeches[1].speaker),
-                ),
-                oo: (
-                    team_url_to_id(&oo.speeches[0].speaker),
-                    team_url_to_id(&oo.speeches[1].speaker),
-                ),
-                cg: (
-                    team_url_to_id(&cg.speeches[0].speaker),
-                    team_url_to_id(&cg.speeches[1].speaker),
-                ),
-                co: (
-                    team_url_to_id(&co.speeches[0].speaker),
-                    team_url_to_id(&co.speeches[1].speaker),
-                ),
-                og_speaks: (
-                    og.speeches[0].score as u8,
-                    og.speeches[1].score as u8,
-                ),
-                oo_speaks: (
-                    oo.speeches[0].score as u8,
-                    oo.speeches[1].score as u8,
-                ),
-                cg_speaks: (
-                    cg.speeches[0].score as u8,
-                    cg.speeches[1].score as u8,
-                ),
-                co_speaks: (
-                    co.speeches[0].score as u8,
-                    co.speeches[1].score as u8,
-                ),
-            });
-        }
-    }
-
-    let speakers = client
-        .api_v1_tournaments_speakers_list(tournament_slug, None, None)
-        .await
-        .unwrap()
-        .0
-        .clone()
-        .into_iter()
-        .map(|speaker| (speaker.id, speaker.clone()))
-        .collect::<HashMap<i64, _>>();
-    (rooms, speakers)
-}
-
-fn team_url_to_id(input: &str) -> usize {
-    let re = Regex::new(r"(\d+)$").unwrap();
-    re.captures(input)
-        .and_then(|caps| {
-            caps.get(1).map(|m| m.as_str().parse::<usize>().unwrap())
-        })
-        .unwrap()
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

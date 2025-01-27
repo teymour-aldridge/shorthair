@@ -1,10 +1,13 @@
+use arbitrary::Arbitrary;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::Serialize;
 
 use crate::user::User;
 
-#[derive(Queryable, Serialize, Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(
+    Queryable, Serialize, Debug, Clone, Hash, PartialEq, Eq, Arbitrary,
+)]
 pub struct SparSeries {
     pub id: i64,
     pub public_id: String,
@@ -15,7 +18,9 @@ pub struct SparSeries {
     pub created_at: NaiveDateTime,
 }
 
-#[derive(Queryable, Serialize, Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(
+    Queryable, Serialize, Clone, Debug, Hash, Eq, PartialEq, Arbitrary,
+)]
 pub struct Spar {
     pub id: i64,
     pub public_id: String,
@@ -26,13 +31,12 @@ pub struct Spar {
     pub created_at: NaiveDateTime,
 }
 
-#[derive(Queryable, Serialize, Clone)]
+#[derive(Debug, Queryable, Serialize, Clone, Arbitrary)]
 pub struct SparSignup {
     pub id: i64,
     pub public_id: String,
-    /// The id of the user, as in the database (i.e. NOT in Tabbycat).
     pub user_id: i64,
-    pub session_id: i64,
+    pub spar_id: i64,
     pub as_judge: bool,
     pub as_speaker: bool,
 }
@@ -59,14 +63,34 @@ impl SparSignupSerializer {
                 .filter(crate::schema::users::id.eq(t.user_id))
                 .get_result::<User>(conn)
                 .unwrap(),
-            session_id: t.session_id,
+            session_id: t.spar_id,
             as_judge: t.as_judge,
             as_speaker: t.as_speaker,
         }
     }
 }
 
-#[derive(Queryable)]
+#[derive(Queryable, Arbitrary)]
+pub struct SparRoomTeam {
+    id: i64,
+    public_id: String,
+    room_id: i64,
+    position: i64,
+}
+
+#[derive(
+    Queryable, Serialize, Debug, Clone, Eq, PartialEq, Hash, Arbitrary,
+)]
+pub struct SparRoomTeamSpeaker {
+    id: i64,
+    public_id: String,
+    user_id: i64,
+    team_id: i64,
+}
+
+#[derive(
+    Queryable, Serialize, Debug, Clone, Eq, PartialEq, Hash, Arbitrary,
+)]
 pub struct SparRoomAdjudicator {
     pub id: i64,
     pub public_id: String,
@@ -76,17 +100,21 @@ pub struct SparRoomAdjudicator {
     pub status: String,
 }
 
-#[derive(Queryable, Serialize, Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(
+    Queryable, Serialize, Debug, Clone, Eq, PartialEq, Hash, Arbitrary,
+)]
 pub struct AdjudicatorBallotSubmission {
     pub id: i64,
     pub public_id: String,
     pub adjudicator_id: i64,
     pub room_id: i64,
-    pub created_at: String,
+    pub created_at: NaiveDateTime,
     pub ballot_data: String,
 }
 
-#[derive(Queryable, Serialize, Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(
+    Queryable, Serialize, Debug, Clone, Eq, PartialEq, Hash, Arbitrary,
+)]
 pub struct SparRoom {
     pub id: i64,
     pub public_id: String,

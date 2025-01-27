@@ -1,3 +1,4 @@
+use arbitrary::Arbitrary;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use rocket::{
@@ -15,7 +16,7 @@ use crate::{
 
 pub const LOGIN_COOKIE: &str = "jeremy_bearimy";
 
-#[derive(Debug, Queryable, Serialize, Clone)]
+#[derive(Debug, Queryable, Serialize, Clone, Arbitrary)]
 pub struct User {
     pub id: i64,
     pub public_id: String,

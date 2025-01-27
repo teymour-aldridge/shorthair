@@ -5,7 +5,7 @@ use auth::login::{
 use config_for_internals::{do_make_session, make_session_page};
 use db::{user::User, DbConn};
 use groups::{
-    create_group_page, do_create_group, do_create_internals,
+    create_group_page, do_create_group, do_create_spar_series,
     new_internals_page, view_groups,
 };
 use html::page_of_body;
@@ -13,7 +13,8 @@ use rocket::figment::{
     util::map,
     value::{Map, Value},
 };
-use spar_allocation::routes::{generate_draw, session_page};
+use signup_for_spar::{do_spar_signup, spar_signup_page};
+use spar_allocation::routes::{do_release_draw, generate_draw, session_page};
 
 pub mod admin;
 pub mod auth;
@@ -23,8 +24,8 @@ pub mod config_for_internals;
 pub mod groups;
 pub mod html;
 pub mod id_gen;
-#[cfg(test)]
 pub mod model;
+pub mod signup_for_spar;
 pub mod spar_allocation;
 pub mod util;
 
@@ -70,11 +71,14 @@ fn rocket() -> _ {
             create_group_page,
             do_create_group,
             new_internals_page,
-            do_create_internals,
+            do_create_spar_series,
             make_session_page,
             do_make_session,
             session_page,
-            generate_draw
+            generate_draw,
+            do_release_draw,
+            spar_signup_page,
+            do_spar_signup
         ],
     )
 }

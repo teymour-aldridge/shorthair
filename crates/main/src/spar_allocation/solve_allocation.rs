@@ -33,7 +33,8 @@ use good_lp::{
     VariableDefinition,
 };
 
-/// Always remember: if it runs in polynomial time, it's efficient.
+/// Always remember: if it runs in polynomial time, it's efficient (for
+/// constructing the problem instance).
 pub fn solve_lp(
     participants: Arc<Vec<SparSignup>>,
     elo_scores: HashMap<usize, f64>,
@@ -146,9 +147,8 @@ pub fn solve_lp(
             }
 
             constraints.push(constraint!(judge_count.clone() >= u_r[&room]));
-            // ensure that judges are not allocated into empty rooms (100 is a
-            // large constant bigger than any panel that could be feasibly
-            // allocated)
+
+            // ensure that judges are not allocated into inactive rooms
             constraints
                 .push(constraint!(judge_count.clone() <= 100 * u_r[&room]));
 
@@ -163,15 +163,10 @@ pub fn solve_lp(
 
             constraints.push(constraint!(co_count.clone() <= 2 * u_r[&room]));
             constraints.push(constraint!(co_count.clone() >= u_r[&room]));
-
-            // judges shouldn't be put in empty rooms
-            constraints.push(constraint!(
-                5 * u_r[&room]
-                    <= judge_count + og_count + oo_count + cg_count + co_count
-            ));
         }
     };
 
+    // minimise difference between teams
     let difference_between_teams_objective = {
         // ELO score of each team
         //
@@ -243,6 +238,10 @@ pub fn solve_lp(
         difference_between_teams_objective
     };
 
+    // todo: maximise the difference between speakers on a team
+    let difference_between_speakers_objective = { 0.0 };
+
+    // we want fewer rooms (where possible)
     let fewer_rooms_objective = {
         let mut room_count = Expression::default();
 
@@ -257,9 +256,13 @@ pub fn solve_lp(
 
     let mut problem = vars
         .minimise(
-            difference_between_teams_objective + /* todo: multiplier here */ fewer_rooms_objective,
+            (difference_between_teams_objective
+                + /* todo: multiplier here */ difference_between_speakers_objective
+                + /* todo: multiplier here */ fewer_rooms_objective),
         )
         .using(good_lp::solvers::highs::highs);
+
+    // add constraints to problem
     for constraint in constraints {
         problem = problem.with(constraint);
     }
@@ -428,7 +431,7 @@ mod test_allocations {
                 id: incr_c(),
                 public_id: "64abde2a-ed68-49da-a4d8-860ebefe6f98".to_string(),
                 user_id: incr_c(),
-                session_id: 0,
+                spar_id: 0,
                 as_judge: true,
                 as_speaker: false,
             })
@@ -439,7 +442,7 @@ mod test_allocations {
                 id: incr_c(),
                 public_id: "64abde2a-ed68-49da-a4d8-860ebefe6f98".to_string(),
                 user_id: incr_c(),
-                session_id: 0,
+                spar_id: 0,
                 as_judge: false,
                 as_speaker: true,
             })
@@ -450,7 +453,7 @@ mod test_allocations {
                 id: incr_c(),
                 public_id: "64abde2a-ed68-49da-a4d8-860ebefe6f98".to_string(),
                 user_id: incr_c(),
-                session_id: 0,
+                spar_id: 0,
                 as_judge: true,
                 as_speaker: true,
             })

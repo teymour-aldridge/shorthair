@@ -1,3 +1,4 @@
+use arbitrary::Arbitrary;
 use chrono::NaiveDateTime;
 use diesel::{
     dsl::auto_type, prelude::*, sql_types::Bool, sqlite::Sqlite,
@@ -8,7 +9,9 @@ use serde::Serialize;
 
 use crate::schema::{self, group_members, groups};
 
-#[derive(Debug, Queryable, Serialize, Clone, Hash, PartialEq, Eq)]
+#[derive(
+    Debug, Queryable, Serialize, Clone, Hash, PartialEq, Eq, Arbitrary,
+)]
 pub struct Group {
     pub id: i64,
     pub public_id: String,
@@ -28,7 +31,7 @@ impl Group {
     }
 }
 
-#[derive(Debug, Queryable, Serialize)]
+#[derive(Debug, Queryable, Serialize, Arbitrary)]
 pub struct GroupMember {
     rowid: i64,
     user_id: i64,

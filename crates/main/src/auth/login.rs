@@ -19,6 +19,7 @@ use rocket::{
     http::CookieJar,
     response::{Flash, Redirect},
 };
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{html::page_of_body, util::short_random};
@@ -38,10 +39,10 @@ pub async fn login_with_password(
     Ok(page_of_body(markup, user))
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, Serialize, Debug)]
 pub struct PasswordLoginForm {
-    email: String,
-    password: String,
+    pub email: String,
+    pub password: String,
 }
 
 #[post("/login", data = "<form>")]

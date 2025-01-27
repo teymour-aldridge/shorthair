@@ -27,15 +27,15 @@ use crate::{
 
 use super::solve_allocation::{rooms_of_params, solve_lp, Team};
 
-#[get("/sessions/<session_id>")]
+#[get("/spars/<spar_id>")]
 pub async fn session_page(
-    session_id: String,
+    spar_id: String,
     db: DbConn,
     user: User,
 ) -> Option<Result<Markup, Unauthorized<()>>> {
     db.run(move |conn| {
         conn.transaction::<_, diesel::result::Error, _>(move |conn| {
-            let sid = session_id.clone();
+            let sid = spar_id.clone();
             let session = spars::table
                 .filter(spars::public_id.eq(sid))
                 .get_result::<Spar>(conn)
@@ -64,7 +64,7 @@ pub async fn session_page(
                     }
 
                     let code = QrCode::with_version(
-                        format!("https://eldemite.net/sessions/{session_id}/signup"),
+                        format!("https://tab.reasoning.page/spars/{spar_id}/signup"),
                         Version::Normal(5),
                         EcLevel::L,
                     )
@@ -118,7 +118,7 @@ pub async fn session_page(
                                 }
                             }
 
-                            form method="post" action={"/sessions/"(session.public_id)"/makedraw"} {
+                            form method="post" action={"/spars/"(session.public_id)"/makedraw"} {
                                 button class="btn btn-primary" type="submit" {
                                     "Generate draw"
                                 }
@@ -135,7 +135,7 @@ pub async fn session_page(
     .await
 }
 
-#[post("/sessions/<session_id>/makedraw")]
+#[post("/spars/<session_id>/makedraw")]
 /// Generate the draw for the internal sessions.
 pub async fn generate_draw(
     user: User,
@@ -192,7 +192,7 @@ pub async fn generate_draw(
 
             if n_people_only_willing_to_speak < 4 {
                 return Ok(Some(Ok(Flash::error(
-                    Redirect::to(format!("/sessions/{}", session.public_id)),
+                    Redirect::to(format!("/spars/{}", session.public_id)),
                     "Error: too few speakers for a British Parliamentary spar (need at least 4)!",
                 ))));
             }
@@ -202,7 +202,7 @@ pub async fn generate_draw(
             // enough people to form a debate.
             if n_judges * 8 < n_people_only_willing_to_speak {
                 return Ok(Some(Ok(Flash::error(
-                    Redirect::to(format!("/sessions/{}", session.id)),
+                    Redirect::to(format!("/spars/{}", session.id)),
                     // todo: format numbers
                     "Error: too few people willing to judge for a British
                     Parliamentary session (assuming 1 judge and 8 people)!",
@@ -280,7 +280,7 @@ pub async fn generate_draw(
             }
 
             Ok(Some(Ok(Flash::success(
-                Redirect::to(format!("/sessions/{session_id}/editdraw")),
+                Redirect::to(format!("/spars/{session_id}/editdraw")),
                 "Draw has been created!",
             ))))
         })
@@ -336,7 +336,7 @@ fn load_room_data(
     Ok(spar_room_data)
 }
 
-#[get("/sessions/<spar_id>/showdraw")]
+#[get("/spars/<spar_id>/showdraw")]
 pub async fn edit_draw_page(spar_id: String, user: User, db: DbConn) -> Markup {
     db.run(move |conn| {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
@@ -448,7 +448,7 @@ pub async fn edit_draw_page(spar_id: String, user: User, db: DbConn) -> Markup {
 
 // todo: mechanism to edit draws
 
-#[post("/sessions/<spar_id>/releasedraw")]
+#[post("/spars/<spar_id>/releasedraw")]
 pub async fn do_release_draw(
     spar_id: String,
     user: User,
@@ -502,7 +502,7 @@ pub async fn do_release_draw(
             assert_eq!(n, 1);
 
             Ok(Either::Right(Redirect::to(format!(
-                "/sessions/{spar_id}/viewdraw"
+                "/spars/{spar_id}/viewdraw"
             ))))
         })
         .unwrap()
