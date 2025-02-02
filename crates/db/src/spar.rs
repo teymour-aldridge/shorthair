@@ -72,10 +72,10 @@ impl SparSignupSerializer {
 
 #[derive(Queryable, Arbitrary)]
 pub struct SparRoomTeam {
-    id: i64,
-    public_id: String,
-    room_id: i64,
-    position: i64,
+    pub id: i64,
+    pub public_id: String,
+    pub room_id: i64,
+    pub position: i64,
 }
 
 #[derive(

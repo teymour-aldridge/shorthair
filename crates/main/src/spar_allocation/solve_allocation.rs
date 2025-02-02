@@ -256,9 +256,9 @@ pub fn solve_lp(
 
     let mut problem = vars
         .minimise(
-            (difference_between_teams_objective
+            difference_between_teams_objective
                 + /* todo: multiplier here */ difference_between_speakers_objective
-                + /* todo: multiplier here */ fewer_rooms_objective),
+                + /* todo: multiplier here */ fewer_rooms_objective,
         )
         .using(good_lp::solvers::highs::highs);
 

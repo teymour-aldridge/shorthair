@@ -60,7 +60,7 @@ pub mod sync {
         use db::spar::SparSignup;
         use uuid::Uuid;
 
-        use crate::spar_allocation::solve_allocation::{SolverRoom, Team};
+        use crate::spar_allocation::solve_allocation::Team;
 
         lazy_static::lazy_static! {
             /// Maps room IDs to the relevant draws.

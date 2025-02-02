@@ -1589,6 +1589,7 @@ dependencies = [
  "insta",
  "lazy_static",
  "maud",
+ "once_cell",
  "qrcode",
  "rand",
  "regex",
