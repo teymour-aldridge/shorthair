@@ -2,6 +2,7 @@ use chrono::Utc;
 use db::{
     group::{Group, GroupMember},
     schema::{group_members, groups, spar_series},
+    spar::SparSeries,
     user::User,
     DbConn,
 };
@@ -16,9 +17,8 @@ use rocket::{
     response::{Flash, Redirect},
 };
 use serde::Serialize;
-use uuid::Uuid;
 
-use crate::page_of_body;
+use crate::{model::sync::id::gen_uuid, page_of_body};
 
 fn create_group_form(error: Option<String>) -> Markup {
     html! {
@@ -74,7 +74,15 @@ pub async fn do_create_group(
                 return Ok(Either::Left(page_of_body(markup, Some(user))));
             }
 
-            let group_public_id = Uuid::now_v7().to_string();
+            if !Group::validate_name(&group.name) {
+                let markup = create_group_form(Some(
+                    "Error: that name is not valid."
+                        .to_string(),
+                ));
+                return Ok(Either::Left(page_of_body(markup, Some(user))));
+            }
+
+            let group_public_id = gen_uuid().to_string();
 
             let id = diesel::insert_into(groups::table)
                 .values((
@@ -122,7 +130,7 @@ pub async fn view_groups(
                     .get_result::<Group>(conn)
                     .optional()
                     .unwrap();
-                group.map(move |group| {
+                group.map(|group| {
                     let is_admin = select(exists(
                         groups::table
                             .filter(groups::id.eq(group.id))
@@ -144,15 +152,43 @@ pub async fn view_groups(
             };
 
             if let Some((group, is_admin, has_signing_power)) = query_result {
+                let spar_series = spar_series::table
+                    .filter(spar_series::group_id.eq(group.id))
+                    .load::<SparSeries>(conn)?;
+
                 assert!(!is_admin || has_signing_power);
                 Ok(Some(page_of_body(html! {
                     h1 { "Group: " (group.name) }
                     @if is_admin {
-                        ul {
-                            li {
-                                a href={"/groups/"(group.public_id)"/spar_series/new"} { "New internal spar" }
+                        h3 {"Spars"}
+                        @if !spar_series.is_empty() {
+                            table class="table" {
+                                thead {
+                                    tr {
+                                        th scope="col" {"Series title"}
+                                        th {
+                                            "View series"
+                                        }
+                                    }
+                                }
+                                tbody {
+                                    @for series in spar_series {
+                                        tr {
+                                            th scope="row" {
+                                                (series.title)
+                                            }
+                                            td {
+                                                a href=(format!("/spar_series/{}", series.public_id)) {
+                                                    "View series"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+
+                        a class="btn btn-primary" href={ "/groups/" (group.public_id) "/spar_series/new" } { "New internal spar" }
                     }
                 }, user)))
             } else {
@@ -275,7 +311,7 @@ pub async fn do_create_spar_series(
                 ))));
             }
 
-            let public_id = Uuid::now_v7().to_string();
+            let public_id = gen_uuid().to_string();
 
             let uuid = insert_into(spar_series::table)
                 .values((

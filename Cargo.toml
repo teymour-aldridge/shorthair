@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
-members = ["crates/main", "crates/db", "crates/email"]
+members = ["crates/main", "crates/db", "crates/email", "crates/fuzzcheck-util"]
 default-members = ["crates/main"]

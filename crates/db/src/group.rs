@@ -5,18 +5,34 @@ use diesel::{
     BoxableExpression,
 };
 
-use serde::Serialize;
+use fuzzcheck::DefaultMutator;
+use fuzzcheck_util::{
+    chrono_mutators::{naive_date_time_mutator, NaiveDateTimeMutator},
+    useful_string_mutator::{useful_string_mutator, UsefulStringMutator},
+};
+use serde::{Deserialize, Serialize};
 
 use crate::schema::{self, group_members, groups};
 
 #[derive(
-    Debug, Queryable, Serialize, Clone, Hash, PartialEq, Eq, Arbitrary,
+    Debug,
+    Queryable,
+    Serialize,
+    Deserialize,
+    Clone,
+    Hash,
+    PartialEq,
+    Eq,
+    Arbitrary,
+    DefaultMutator,
 )]
 pub struct Group {
     pub id: i64,
     pub public_id: String,
+    #[field_mutator(UsefulStringMutator = { useful_string_mutator() })]
     pub name: String,
     pub website: Option<String>,
+    #[field_mutator(NaiveDateTimeMutator = { naive_date_time_mutator() })]
     pub created_at: NaiveDateTime,
 }
 
@@ -29,6 +45,19 @@ impl Group {
     > {
         Box::new(groups::name.eq(name))
     }
+
+    pub fn validate_name(name: &str) -> bool {
+        name.chars().count() > 3
+            && name
+                .chars()
+                .all(|c| c.is_ascii() && (c.is_alphanumeric() || c.is_ascii()))
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn test_group_validate() {
+    assert!(Group::validate_name("usefulAsciiString"))
 }
 
 #[derive(Debug, Queryable, Serialize, Arbitrary)]

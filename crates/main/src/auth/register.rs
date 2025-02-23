@@ -7,9 +7,8 @@ use diesel::{dsl::now, insert_into, prelude::*};
 use maud::Markup;
 use rand::rngs::OsRng;
 use rocket::{form::Form, response::Redirect};
-use uuid::Uuid;
 
-use crate::{html::page_of_body, util::is_valid_email};
+use crate::{html::page_of_body, model::sync::id::gen_uuid};
 
 #[get("/register")]
 pub async fn register_page(user: Option<User>) -> Result<Markup, Redirect> {
@@ -78,10 +77,20 @@ pub async fn do_register(
 
             let email = form.email.clone();
 
-            if !is_valid_email(&email) {
+            if !User::validate_email(&email) {
                 return Ok(Err(register_form(
                     Some(&form),
                     Some("Error: that email is not valid."),
+                )));
+            }
+
+            if !User::validate_username(&form.username) {
+                return Ok(Err(register_form(
+                    Some(&form),
+                    Some(
+                        "Error: names should consist exclusively of letters
+                         and spaces.",
+                    ),
                 )));
             }
 
@@ -96,7 +105,7 @@ pub async fn do_register(
 
             let n = insert_into(users::table)
                 .values((
-                    users::public_id.eq(Uuid::now_v7().to_string()),
+                    users::public_id.eq(gen_uuid().to_string()),
                     users::username.eq(&form.username),
                     users::email.eq(email),
                     users::email_verified.eq(false),

@@ -67,7 +67,55 @@ create table if not exists spar_series (
     foreign key (group_id) references groups (id)
 );
 
--- todo: rename this to spar
+create table if not exists spar_series_members (
+    id integer primary key not null,
+    public_id text not null,
+    name text not null,
+    email text not null,
+    spar_series_id integer not null,
+    created_at timestamp not null,
+    foreign key (spar_series_id) references spar_series (id)
+);
+
+-- full text search for the spar series members
+create virtual table if not exists spar_series_members_fts using fts5 (
+    name,
+    email,
+    content = 'spar_series_members',
+    content_rowid = 'id'
+);
+
+create trigger if not exists spar_series_members_ai after insert on spar_series_members begin
+insert into
+    spar_series_members_fts (rowid, name, email)
+values
+    (new.id, new.name, new.email);
+
+end;
+
+create trigger if not exists spar_series_members_ad after delete on spar_series_members begin
+insert into
+    spar_series_members_fts (spar_series_members_fts, rowid, name, email)
+values
+    ('delete', old.id, old.name, old.email);
+
+end;
+
+create trigger if not exists spar_series_members_au after
+update on spar_series_members begin
+insert into
+    spar_series_members_fts (spar_series_members_fts, rowid, name, email)
+values
+    ('delete', old.id, old.name, old.email);
+
+insert into
+    spar_series_members_fts (rowid, name, email)
+values
+    (new.id, new.name, new.email);
+
+end;
+
+-- todo: clashes
 create table if not exists spars (
     id integer primary key not null,
     public_id text not null,
@@ -84,12 +132,13 @@ create table if not exists spars (
 create table if not exists spar_signups (
     id integer primary key not null,
     public_id text not null,
-    user_id integer not null,
+    member_id integer not null,
     spar_id integer not null,
     as_judge boolean not null,
     as_speaker boolean not null,
-    foreign key (user_id) references users (id),
-    foreign key (spar_id) references spars (id)
+    foreign key (member_id) references spar_series_members (id),
+    foreign key (spar_id) references spars (id),
+    unique (member_id, spar_id)
 );
 
 create table if not exists spar_rooms (
@@ -99,19 +148,32 @@ create table if not exists spar_rooms (
     foreign key (spar_id) references spars (id) on delete cascade
 );
 
-create table if not exists spar_room_adjudicator (
+create table if not exists spar_adjudicators (
     id integer primary key not null,
     public_id text not null,
-    user_id integer not null,
+    member_id integer not null,
     room_id integer not null,
     -- one of "chair", "panelist", "trainee"
     status text not null,
-    unique (user_id, room_id),
-    foreign key (user_id) references users (id) on delete cascade,
+    unique (member_id, room_id),
+    foreign key (member_id) references spar_series_members (id),
     foreign key (room_id) references spar_rooms (id) on delete cascade
 );
 
-create table if not exists spar_room_teams (
+create table if not exists spar_adjudicator_ballot_links (
+    id integer primary key not null,
+    public_id text not null,
+    link text not null,
+    room_id integer not null,
+    member_id integer not null,
+    created_at timestamp not null,
+    expires_at timestamp not null,
+    foreign key (room_id) references spar_rooms (id) on delete cascade,
+    foreign key (member_id) references spar_series_members (id)
+);
+
+-- A single team in a spar.
+create table if not exists spar_teams (
     id integer primary key not null,
     public_id text not null,
     room_id integer not null,
@@ -120,27 +182,50 @@ create table if not exists spar_room_teams (
     foreign key (room_id) references spar_rooms (id) on delete cascade
 );
 
--- a speaker on a spar team
-create table if not exists spar_room_team_speaker (
+-- A speaker on a spar team.
+create table if not exists spar_speakers (
     id integer primary key not null,
     public_id text not null,
-    user_id integer not null,
+    member_id integer not null,
     team_id integer not null,
-    foreign key (team_id) references spar_room_teams (id) on delete cascade,
-    foreign key (user_id) references users (id) on delete cascade,
-    -- can't place speakers on multiple teams
-    unique (user_id, team_id)
+    foreign key (team_id) references spar_teams (id) on delete cascade,
+    foreign key (member_id) references spar_series_members (id) on delete cascade,
+    -- can't place members on multiple teams in the same spar
+    unique (member_id, team_id)
 );
 
-create table if not exists adjudicator_ballot_submissions (
+-- Adjudicator ballots. More recent ballots over-ride previous ballots.
+create table if not exists adjudicator_ballots (
     id integer primary key not null,
     public_id text not null,
     adjudicator_id integer not null,
     room_id integer not null,
     created_at timestamp not null,
-    -- store the ballot as JSON
-    -- {og: {s1: 53, s2: 56}, oo: {s1: 56, s2: 67}, cg: {s1: 86, s2: 85}, co: {s1: 82, s2: 83}}
-    ballot_data text not null,
-    foreign key (adjudicator_id) references spar_room_adjudicators (id),
-    foreign key (room_id) references spar_rooms (id)
+    foreign key (adjudicator_id) references spar_adjudicators (id) on delete cascade,
+    foreign key (room_id) references spar_rooms (id) on delete cascade
+);
+
+-- Data actually stored in the ballots
+create table if not exists adjudicator_ballot_entries (
+    id integer primary key not null,
+    public_id text not null,
+    ballot_id integer not null,
+    speaker_id integer not null,
+    team_id integer not null,
+    -- todo: some formats require non-integer scores (e.g. Australs)
+    speak integer not null,
+    -- in increasing order, so for BP this would be
+    --
+    -- 0 -> PM
+    -- 1 -> DPM
+    --
+    -- whereas for australs (which is not yet supported)
+    -- 0 -> Prop1
+    -- 1 -> Prop2
+    -- 2 -> Prop3
+    -- 3 -> Reply
+    position integer not null,
+    foreign key (speaker_id) references spar_speakers (id) on delete cascade,
+    foreign key (team_id) references spar_teams (id) on delete cascade,
+    foreign key (ballot_id) references adjudicator_ballots (id) on delete cascade
 );

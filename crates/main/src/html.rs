@@ -7,7 +7,7 @@ pub fn page_of_body(body: Markup, user: Option<User>) -> Markup {
         (DOCTYPE)
         html {
             head {
-                title { "Eldemite" }
+                title { "Shorthair" }
                 script src="https://unpkg.com/htmx.org@2.0.2" integrity="sha384-Y7hw+L/jvKeWIRRkqWYfPcvVxHzVzn5REgzbawhxAuQGwX1XWe70vji+VSeHOThJ" crossorigin="anonymous" {}
                 link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous" {}
             }
@@ -42,7 +42,7 @@ pub fn page_of_body(body: Markup, user: Option<User>) -> Markup {
     }
 }
 
-pub fn error_403(error: Option<String>, user: Option<User>) -> Markup {
+pub fn error_403<T: ToString>(error: Option<T>, user: Option<User>) -> Markup {
     page_of_body(
         html! {
             div class="text-center" {
@@ -51,7 +51,7 @@ pub fn error_403(error: Option<String>, user: Option<User>) -> Markup {
                 p class="lead" { "You don't have permission to access this resource." }
                 @if let Some(err) = error {
                     div class="alert alert-danger" role="alert" {
-                        (err)
+                        (err.to_string())
                     }
                 }
                 a class="btn btn-danger" href="/" { "Return Home" }

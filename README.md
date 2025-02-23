@@ -16,10 +16,6 @@ debater fashion text me on Facebook Messenger.
 - [ ] Model-based test for the application, along the lines of
       [this excellent article](https://concerningquality.com/model-based-testing/)
 - [ ] Many updates to the spar generator draw algorithm are needed.
-- [ ] reg - a registration system inspired by the "DoxBot". Tabbycat features an
-      API which allows programatic importing of participant data. However, this
-      is currently only used by a few people using software packages that are
-      not widely distributed.
 - [ ] High-quality adjudicator allocation, a lá
       [Adjumo](https://czlee.nz/debating/adjumo.pdf), intended to automatically
       allocate adjudicators for large tournaments according to any set of

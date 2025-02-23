@@ -1,410 +1,614 @@
-use std::sync::Arc;
-
+use arbitrary::Arbitrary;
 use db::{
-    schema::{
-        adjudicator_ballot_submissions, spar_room_adjudicator, spar_rooms,
-        spars,
+    ballot::{
+        AdjudicatorBallotSubmission, BallotRepr, SparAdjudicatorBallotLink,
     },
-    spar::{AdjudicatorBallotSubmission, SparRoomAdjudicator},
+    room::SparRoomRepr,
+    schema::{
+        adjudicator_ballot_entries, adjudicator_ballots,
+        spar_adjudicator_ballot_links, spar_adjudicators, spar_series_members,
+        spar_speakers,
+    },
     user::User,
     DbConn,
 };
-use diesel::prelude::*;
-use email::send_mail;
+use diesel::{prelude::*, sqlite::Sqlite};
+use fuzzcheck::DefaultMutator;
 use maud::Markup;
-use rocket::{form::Form, tokio};
+use rocket::{form::Form, response::Redirect};
 use serde::{Deserialize, Serialize};
 
-use crate::html::error_403;
-use crate::html::page_of_body;
+use crate::{
+    html::{error_404, page_of_body},
+    model::sync::id::gen_uuid,
+};
 
-#[derive(Serialize, Deserialize)]
-pub struct Ballot {
-    og: BallotTeam,
-    oo: BallotTeam,
-    cg: BallotTeam,
-    co: BallotTeam,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct BallotTeam {
-    s1: u16,
-    s2: u16,
-}
-
-#[get("/spars/<session_id>/makeballot")]
-/// Allows a judge to submit their ballot.
-///
-/// Requires the user to be
-/// (1) signed in
-/// (2) set up as a judge
-/// (3) draw must have been released
+#[get("/ballots/submit/<key>")]
 pub async fn submit_ballot_page(
-    session_id: String,
-    user: User,
+    key: String,
     db: DbConn,
+    user: Option<User>,
 ) -> Markup {
     db.run(move |conn| {
-        let adjudicator: Option<SparRoomAdjudicator> = spar_room_adjudicator::table
-            .filter(spar_room_adjudicator::user_id.eq(user.id))
-            .inner_join(spar_rooms::table.inner_join(spars::table))
-            .filter(spars::public_id.eq(&session_id))
-            .select(spar_room_adjudicator::all_columns)
-            .first::<SparRoomAdjudicator>(conn)
-            .optional()
-            .unwrap();
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let key = match spar_adjudicator_ballot_links::table
+                .filter(spar_adjudicator_ballot_links::link.eq(&key))
+                .filter(
+                    spar_adjudicator_ballot_links::expires_at
+                        .gt(diesel::dsl::now),
+                )
+                .first::<SparAdjudicatorBallotLink>(conn)
+                .optional()?
+            {
+                Some(key) => key,
+                None => {
+                    return Ok(error_404(
+                        Some(
+                            "Error: no such link (perhaps it has expired?)"
+                                .to_string(),
+                        ),
+                        user,
+                    ))
+                }
+            };
 
-        let adjudicator: SparRoomAdjudicator = match adjudicator {
-            Some(adj) => adj,
-            None => {
-                return error_403(
-                    Some("You are not allocated as an adjudicator for this spar, so cannot submit a ballot.".to_string()),
-                    Some(user),
-                );
-            }
-        };
+            let room = SparRoomRepr::of_id(key.room_id, conn)?;
 
-        let latest_ballot = adjudicator_ballot_submissions::table
-            .order(adjudicator_ballot_submissions::created_at.desc())
-            .select(adjudicator_ballot_submissions::created_at)
-            .first::<chrono::NaiveDateTime>(conn)
-            .optional()
-            .unwrap();
+            let previous_ballot_id = adjudicator_ballots::table
+                .filter(adjudicator_ballots::room_id.eq(room.inner.id))
+                .inner_join(spar_adjudicators::table)
+                .filter(spar_adjudicators::member_id.eq(key.member_id))
+                .select(adjudicator_ballots::id)
+                .first::<i64>(conn)
+                .optional()?;
 
-        if let Some(latest_ballot) = latest_ballot {
-            if (chrono::Utc::now().naive_utc() - latest_ballot).num_hours() > 1 {
-                return error_403(
-                    Some("Ballot submissions for this session are now closed.".to_string()),
-                    Some(user),
-                );
-            }
-        }
+            let previous_ballot =
+                if let Some(previous_ballot_id) = previous_ballot_id {
+                    Some(BallotRepr::of_id(previous_ballot_id, conn)?)
+                } else {
+                    None
+                };
 
-        let ballot = adjudicator_ballot_submissions::table
-            .filter(adjudicator_ballot_submissions::room_id.eq(adjudicator.room_id))
-            .filter(adjudicator_ballot_submissions::adjudicator_id.eq(adjudicator.id))
-            .first::<AdjudicatorBallotSubmission>(conn)
-            .optional()
-            .unwrap();
-        let ballot: Option<Ballot> =
-            ballot.map(|adj_ballot| serde_json::from_str(&adj_ballot.ballot_data).unwrap());
-
-        submit_ballot_form(ballot, None, user)
+            Ok(render_ballot_form(previous_ballot, room, None, user))
+        })
+        .unwrap()
     })
     .await
 }
 
-fn submit_ballot_form(
-    ballot: Option<Ballot>,
-    prev_input: Option<Ballot>,
-    user: User,
+pub fn render_ballot(room: &SparRoomRepr, prev: &BallotRepr) -> Markup {
+    maud::html! {
+        div class="row pl-3 pt-3 p-0" {
+            div class="col-6 list-group mb-3" {
+                li class="list-group-item" {
+                    strong {"PM "}
+                    (room.members[&room.speakers[&prev.scoresheet.teams[0].speakers[0].speaker_id].member_id].name)
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[0].speakers[0].score)
+                    }
+                }
+                li class="list-group-item" {
+                    strong {"DPM "}
+                    (room.members[&room.speakers[&prev.scoresheet.teams[0].speakers[1].speaker_id].member_id].name)
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[0].speakers[1].score)
+                    }
+                }
+                li class="list-group-item list-group-item-danger" {
+                    em {"Total for Opening Government"}
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[0].speakers[0].score + prev.scoresheet.teams[0].speakers[1].score)
+                    }
+                }
+            }
+
+            div class="col-6 list-group mb-3" {
+                li class="list-group-item" {
+                    strong {"LO "}
+                    (room.members[&room.speakers[&prev.scoresheet.teams[1].speakers[0].speaker_id].member_id].name)
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[1].speakers[0].score)
+                    }
+                }
+                li class="list-group-item" {
+                    strong {"DLO "}
+                    (room.members[&room.speakers[&prev.scoresheet.teams[1].speakers[1].speaker_id].member_id].name)
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[1].speakers[1].score)
+                    }
+                }
+                li class="list-group-item list-group-item-info" {
+                    em {"Total for Opening Opposition"}
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[1].speakers[0].score + prev.scoresheet.teams[1].speakers[1].score)
+                    }
+                }
+            }
+
+            div class="col-6 list-group mb-3" {
+                li class="list-group-item" {
+                    strong {"MG "}
+                    (room.members[&room.speakers[&prev.scoresheet.teams[2].speakers[0].speaker_id].member_id].name)
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[2].speakers[0].score)
+                    }
+                }
+                li class="list-group-item" {
+                    strong {"GW "}
+                    (room.members[&room.speakers[&prev.scoresheet.teams[2].speakers[1].speaker_id].member_id].name)
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[2].speakers[1].score)
+                    }
+                }
+                li class="list-group-item list-group-item-warning" {
+                    em {"Total for Closing Government"}
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[2].speakers[0].score + prev.scoresheet.teams[2].speakers[1].score)
+                    }
+                }
+            }
+
+            div class="col-6 list-group mb-3" {
+                li class="list-group-item" {
+                    strong {"MO "}
+                    (room.members[&room.speakers[&prev.scoresheet.teams[3].speakers[0].speaker_id].member_id].name)
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[3].speakers[0].score)
+                    }
+                }
+                li class="list-group-item" {
+                    strong {"OW "}
+                    (room.members[&room.speakers[&prev.scoresheet.teams[3].speakers[1].speaker_id].member_id].name)
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[3].speakers[1].score)
+                    }
+                }
+                li class="list-group-item list-group-item-success" {
+                    em {"Total for Closing Opposition"}
+                    span class="float-end badge text-bg-secondary" {
+                        (prev.scoresheet.teams[3].speakers[0].score + prev.scoresheet.teams[3].speakers[1].score)
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_ballot_form(
+    prev: Option<BallotRepr>,
+    room: SparRoomRepr,
+    error: Option<&str>,
+    user: Option<User>,
 ) -> Markup {
-    page_of_body(
+    let prev = prev.map(|prev| {
         maud::html! {
-            h1 { "Submit ballot" }
-
-            @if let Some(existing) = ballot {
-                p { "Note: you have already submitted the following ballot." }
-
-                div.container {
-                    div.row {
-                        div.col {
-                            h4 { "Opening Government" }
-                            p { "Prime Minister: " (existing.og.s1) }
-                            p { "Deputy Prime Minister: " (existing.og.s2) }
-                            p { "Total: " (existing.og.s1 + existing.og.s2) }
-                        }
-                        div.col {
-                            h4 { "Opening Opposition" }
-                            p { "Leader of Opposition: " (existing.oo.s1) }
-                            p { "Deputy Leader of Opposition: " (existing.oo.s2) }
-                            p { "Total: " (existing.oo.s1 + existing.oo.s2) }
-                        }
-                    }
-                    div.row {
-                        div.col {
-                            h4 { "Closing Government" }
-                            p { "Member of Government: " (existing.cg.s1) }
-                            p { "Government Whip: " (existing.cg.s2) }
-                            p { "Total: " (existing.cg.s1 + existing.cg.s2) }
-                        }
-                        div.col {
-                            h4 { "Closing Opposition" }
-                            p { "Member of Opposition: " (existing.co.s1) }
-                            p { "Opposition Whip: " (existing.co.s2) }
-                            p { "Total: " (existing.co.s1 + existing.co.s2) }
-                        }
-                    }
-                }
-
-                b { "If your ballot is outdated, you can submit a new one. This will override the previous ballot. Other judges will receive an email notification informing them that you have submitted this ballot." }
-            } @else {
-                p { "Submit a ballot for this debate" }
+            div class="alert alert-danger" role="alert" {
+                p { b { "You have already submitted the following ballot:" } }
+                (render_ballot(&room, &prev))
             }
-
-            script { "
-            function recomputeAll() {
-              let pm = document.getElementById('pm').valueOf;
-              let dpm = document.getElementById('dpm').valueOf;
-              let ogTotal = pm + dpm;
-              let lo = document.getElementById('lo').valueOf;
-              let dlo = document.getElementById('dlo').valueOf;
-              let ooTotal = lo + dlo;
-              let mg = document.getElementById('mg').valueOf;
-              let gw = document.getElementById('gw').valueOf;
-              let cgTotal = mg + gw;
-              let mo = document.getElementById('mo').valueOf;
-              let ow = document.getElementById('ow').valueOf;
-              let coTotal = mo + ow;
-
-              if (ogTotal === ooTotal || ogTotal === cgTotal || ogTotal === coTotal ||
-                  ooTotal === cgTotal || ooTotal === coTotal ||
-                  cgTotal === coTotal) {
-                    document.getElementById('error').innerHTML =
-                      'Error: teams cannot have equal scores';
-              }
-
-              document.getElementById('og-total').innerHTML = ogTotal;
-              document.getElementById('oo-total').innerHTML = ooTotal;
-              document.getElementById('cg-total').innerHTML = cgTotal;
-              document.getElementById('co-total').innerHTML = coTotal;
-            }
-        " }
-
-            div.container {
-                form {
-                    div.alert.alert-warning role="alert" id="error" { }
-                    div.row {
-                        div.col {
-                            input name="pm" id="pm" placeholder="Prime minister's speaks" type="number" max="100" min="50" onchange="recomputeAll()" value=(prev_input.as_ref().map(|b| b.og.s1.to_string()).unwrap_or("".to_string())) {}
-                            input name="dpm" id="dpm" placeholder="Deputy prime minister's speaks" type="number" max="100" min="50" onchange="recomputeAll()" value=(prev_input.as_ref().map(|b| b.og.s2.to_string()).unwrap_or("".to_string())) {}
-                            span id="og-total" {}
-                        }
-                        div.col {
-                            input name="lo" id="lo" placeholder="Leader of opposition speaks" type="number" max="100" min="50" onchange="recomputeAll()" value=(prev_input.as_ref().map(|b| b.oo.s1.to_string()).unwrap_or("".to_string())) {}
-                            input name="dlo" id="dlo" placeholder="Deputy leader of the opposition speaks" type="number" max="100" min="50" onchange="recomputeAll()" value=(prev_input.as_ref().map(|b| b.oo.s2.to_string()).unwrap_or("".to_string())) {}
-                            span id="oo-total" {}
-                        }
-                    }
-                    div.row {
-                        div.col {
-                            input name="mg" id="mg" placeholder="Member of government speaks" type="number" max="100" min="50" onchange="recomputeAll()" value=(prev_input.as_ref().map(|b| b.cg.s1.to_string()).unwrap_or("".to_string())) {}
-                            input name="gw" id="gw" placeholder="Government whip speaks" type="number" max="100" min="50" onchange="recomputeAll()" value=(prev_input.as_ref().map(|b| b.cg.s2.to_string()).unwrap_or("".to_string())) {}
-                            span id="cg-total" {}
-                        }
-                        div.col {
-                            input name="mo" id="mo" placeholder="Member of opposition speaks" type="number" max="100" min="50" onchange="recomputeAll()" value=(prev_input.as_ref().map(|b| b.co.s1.to_string()).unwrap_or("".to_string())) {}
-                            input name="ow" id="ow" placeholder="Opposition whip speaks" type="number" max="100" min="50" onchange="recomputeAll()" value=(prev_input.as_ref().map(|b| b.co.s2.to_string()).unwrap_or("".to_string())) {}
-                            span id="co-total" {}
-                        }
-                    }
-                    button type="submit" { "Submit ballot" }
-                }
-            }
-        },
-        Some(user),
-    )
-}
-
-#[derive(FromForm)]
-pub struct BallotForm {
-    pm: u16,
-    dpm: u16,
-    lo: u16,
-    dlo: u16,
-    mg: u16,
-    gw: u16,
-    mo: u16,
-    ow: u16,
-}
-
-#[post("/spars/<session_id>/makeballot", data = "<form>")]
-pub async fn do_submit_ballot(
-    session_id: String,
-    user: User,
-    form: Form<BallotForm>,
-    db: DbConn,
-) -> Markup {
-    let (template, emails) = db.run(move |conn| {
-        let emails = Vec::with_capacity(10);
-
-        let adjudicator: Option<SparRoomAdjudicator> = spar_room_adjudicator::table
-            .filter(spar_room_adjudicator::user_id.eq(user.id))
-            .inner_join(spar_rooms::table.inner_join(spars::table))
-            .filter(spars::public_id.eq(&session_id))
-            .select(spar_room_adjudicator::all_columns)
-            .first::<SparRoomAdjudicator>(conn)
-            .optional()
-            .unwrap();
-
-        let adjudicator: SparRoomAdjudicator = match adjudicator {
-            Some(adj) => adj,
-            None => {
-                return (error_403(
-                    Some("You are not allocated as an adjudicator for this spar, so cannot submit a ballot.".to_string()),
-                    Some(user),
-                ), emails);
-            }
-        };
-
-        let ballot = adjudicator_ballot_submissions::table
-            .filter(adjudicator_ballot_submissions::room_id.eq(adjudicator.room_id))
-            .filter(adjudicator_ballot_submissions::adjudicator_id.eq(adjudicator.id))
-            .first::<AdjudicatorBallotSubmission>(conn)
-            .optional()
-            .unwrap();
-
-        let time_of_previous_ballot = adjudicator_ballot_submissions::table
-            .order(adjudicator_ballot_submissions::created_at.desc())
-            .select(adjudicator_ballot_submissions::created_at)
-            .first::<chrono::NaiveDateTime>(conn)
-            .optional()
-            .unwrap();
-
-        if let Some(latest_ballot) = time_of_previous_ballot {
-            if (chrono::Utc::now().naive_utc() - latest_ballot).num_hours() > 1 {
-                return (error_403(
-                    Some("Ballot submissions for this session are now closed.".to_string()),
-                    Some(user),
-                ), emails);
-            }
-        }
-
-        let ballot: Option<Ballot> =
-            ballot.map(|adj_ballot| serde_json::from_str(&adj_ballot.ballot_data).unwrap());
-
-        let (is_valid, _) = validity_of_ballot(&form);
-
-        let insertable_ballot = Ballot {
-            og: BallotTeam {
-                s1: form.pm,
-                s2: form.dpm,
-            },
-            oo: BallotTeam {
-                s1: form.lo,
-                s2: form.dlo,
-            },
-            cg: BallotTeam {
-                s1: form.mg,
-                s2: form.gw,
-            },
-            co: BallotTeam {
-                s1: form.mo,
-                s2: form.ow,
-            },
-        };
-
-        if !is_valid {
-            return (
-                submit_ballot_form(ballot, Some(insertable_ballot), user),
-                emails
-            );
-        }
-
-        let ballot_json = serde_json::to_string(&insertable_ballot).unwrap();
-
-        diesel::insert_into(adjudicator_ballot_submissions::table)
-            .values((
-                adjudicator_ballot_submissions::room_id.eq(adjudicator.room_id),
-                adjudicator_ballot_submissions::adjudicator_id.eq(adjudicator.id),
-                adjudicator_ballot_submissions::ballot_data.eq(ballot_json),
-                adjudicator_ballot_submissions::created_at.eq(diesel::dsl::now),
-            ))
-            .execute(conn)
-            .unwrap();
-
-        (submit_ballot_form(ballot, None, user), emails)
-    })
-    .await;
-
-    // todo: send_emailS function to send multiple emails
-    tokio::spawn(async move {
-        let db = Arc::new(db);
-        for each in emails {
-            let (recipients, subject, html_content, text_content): (
-                Vec<(String, String)>,
-                String,
-                String,
-                String,
-            ) = each;
-            send_mail(
-                recipients
-                    .iter()
-                    .map(|(x, y)| (x.as_str(), y.as_str()))
-                    .collect::<Vec<_>>(),
-                &subject,
-                &html_content,
-                &text_content,
-                db.clone(),
-            )
-            .await;
         }
     });
 
-    template
+    let teams = room.teams.iter().enumerate().map(|(i, team)| {
+        let speaker_names_and_public_ids = team.speakers.iter().map(|speaker_id| {
+            let speaker_record = &room.speakers[speaker_id];
+            assert_eq!(speaker_record.id, *speaker_id);
+            let member = &room.members[&speaker_record.member_id];
+            (member.name.clone(), speaker_record.public_id.clone())
+        }).collect::<Vec<_>>();
+
+        let (s1, s2) = match i {
+            0 => ("pm", "dpm"),
+            1 => ("lo", "dlo"),
+            2 => ("mg", "gw"),
+            3 => ("mo", "ow"),
+            _ => unreachable!(),
+        };
+
+        maud::html! {
+            p {b {(s1)}}
+            div class="mb-3" {
+                label for=(s1) class="form-label" {"Select Speaker"}
+                select name=(s1) id=(s1) class="form-select mb-3" {
+                    @for (speaker_name, speaker_id) in &speaker_names_and_public_ids {
+                        option value=(speaker_id) {(speaker_name)}
+                    }
+                }
+            }
+            div class="mb-3" {
+                label for=(s1.to_string() + "_score") class="form-label" {"Speaker Score"}
+                input type="number" min="50" max="100" name=(s1.to_string() + "_score") id=(s1.to_string() + "_score") class="form-control" {}
+            }
+            hr {}
+            p {b {(s2)}}
+            div class="mb-3" {
+                label for=(s2) class="form-label" {"Select Speaker"}
+                select name=(s2) id=(s2) class="form-select mb-3" {
+                    @for (speaker_name, speaker_id) in &speaker_names_and_public_ids {
+                        option value=(speaker_id) {(speaker_name)}
+                    }
+                }
+            }
+            div class="mb-3" {
+                label for=(s2.to_string() + "_score") class="form-label" {"Speaker Score"}
+                input type="number" min="50" max="100" name=(s2.to_string() + "_score") id=(s2.to_string() + "_score") class="form-control" {}
+            }
+        }
+    }).collect::<Vec<_>>();
+
+    let markup = maud::html! {
+        h1 {"Ballot submission"}
+        @if let Some(error) = error {
+            div class="alert alert-danger" role="alert" {
+                p {(error)}
+            }
+        }
+        @if let Some(prev) = prev {
+            (prev)
+        }
+        form method="post" {
+            div class="row" {
+                div class="col" {
+                    (teams[0])
+                }
+                div class="col" {
+                    (teams[1])
+                }
+            }
+            div class="row" {
+                div class="col" {
+                    (teams[2])
+                }
+                div class="col" {
+                    (teams[3])
+                }
+            }
+            button type="submit" class="btn btn-primary" {"Submit"}
+        }
+    };
+
+    page_of_body(markup, user)
 }
 
-/// Checks if a ballot is valid.
-pub fn validity_of_ballot(ballot: &BallotForm) -> (bool, Option<String>) {
-    let og = ballot.pm + ballot.dpm;
-    let oo = ballot.lo + ballot.dlo;
-    let cg = ballot.mg + ballot.gw;
-    let co = ballot.mo + ballot.ow;
+#[derive(
+    FromForm, Arbitrary, Debug, DefaultMutator, Clone, Serialize, Deserialize,
+)]
+pub struct BpBallotForm {
+    pm: String,
+    pm_score: i64,
+    dpm: String,
+    dpm_score: i64,
+    lo: String,
+    lo_score: i64,
+    dlo: String,
+    dlo_score: i64,
+    mg: String,
+    mg_score: i64,
+    gw: String,
+    gw_score: i64,
+    mo: String,
+    mo_score: i64,
+    ow: String,
+    ow_score: i64,
+}
 
-    if og == oo {
-        return (
-            false,
-            Some(
-                "Opening Government and Opening Opposition have the same score"
-                    .to_string(),
-            ),
-        );
-    }
-    if og == cg {
-        return (
-            false,
-            Some(
-                "Opening Government and Closing Government have the same score"
-                    .to_string(),
-            ),
-        );
-    }
-    if og == co {
-        return (
-            false,
-            Some(
-                "Opening Government and Closing Opposition have the same score"
-                    .to_string(),
-            ),
-        );
-    }
-    if oo == cg {
-        return (
-            false,
-            Some(
-                "Opening Opposition and Closing Government have the same score"
-                    .to_string(),
-            ),
-        );
-    }
-    if oo == co {
-        return (
-            false,
-            Some(
-                "Opening Opposition and Closing Opposition have the same score"
-                    .to_string(),
-            ),
-        );
-    }
-    if cg == co {
-        return (
-            false,
-            Some(
-                "Closing Government and Closing Opposition have the same score"
-                    .to_string(),
-            ),
-        );
-    }
+#[post("/ballots/submit/<key>", data = "<ballot>")]
+pub async fn do_submit_ballot(
+    key: String,
+    db: DbConn,
+    user: Option<User>,
+    ballot: Form<BpBallotForm>,
+) -> Result<Redirect, Markup> {
+    db.run(move |conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let key = match spar_adjudicator_ballot_links::table
+                .filter(spar_adjudicator_ballot_links::link.eq(&key))
+                .filter(
+                    spar_adjudicator_ballot_links::expires_at
+                        .gt(diesel::dsl::now),
+                )
+                .first::<SparAdjudicatorBallotLink>(conn)
+                .optional()?
+            {
+                Some(key) => key,
+                None => {
+                    return Ok(Err(error_404(
+                        Some(
+                            "Error: no such link (perhaps it has expired?)"
+                                .to_string(),
+                        ),
+                        user,
+                    )))
+                }
+            };
 
-    (true, None)
+            let room = SparRoomRepr::of_id(key.room_id, conn)?;
+
+            let previous_ballot_id = adjudicator_ballots::table
+                .filter(adjudicator_ballots::room_id.eq(room.inner.id))
+                .inner_join(spar_adjudicators::table)
+                .filter(spar_adjudicators::member_id.eq(key.member_id))
+                .select(adjudicator_ballots::id)
+                .first::<i64>(conn)
+                .optional()?;
+
+            let previous_ballot =
+                if let Some(previous_ballot_id) = previous_ballot_id {
+                    Some(BallotRepr::of_id(previous_ballot_id, conn)?)
+                } else {
+                    None
+                };
+
+            let id_of_speaker_uuid =
+                |uid: &str, conn: &mut SqliteConnection| {
+                    spar_speakers::table
+                        .filter(spar_speakers::public_id.eq(uid))
+                        .select(spar_speakers::id)
+                        .first::<i64>(conn)
+                };
+
+            let room = SparRoomRepr::of_id(key.room_id, conn)?;
+
+            let ballot_error = (|| -> Result<_, diesel::result::Error> {
+                // check that all speakers are valid
+
+                // todo: warn if unexpected ironman
+                let og = &room.teams[0].speakers;
+                let pm_i64 = id_of_speaker_uuid(&ballot.pm, conn)?;
+                let dpm_i64 = id_of_speaker_uuid(&ballot.dpm, conn)?;
+                if !(og.contains(&pm_i64) && og.contains(&dpm_i64)) {
+                    return Ok(Some(
+                        "Error: the ballot submitted specifies a speaker who is
+                        not assigned to this spar (either PM or DPM is
+                        incorrect).",
+                    ));
+                }
+
+                let oo = &room.teams[1].speakers;
+                let lo_i64 = id_of_speaker_uuid(&ballot.lo, conn)?;
+                let dlo_i64 = id_of_speaker_uuid(&ballot.dlo, conn)?;
+                if !(oo.contains(&lo_i64) && oo.contains(&dlo_i64)) {
+                    return Ok(Some(
+                        "Error: the ballot submitted specifies a speaker who is
+                        not assigned to this spar (either LO or DLO is
+                        incorrect).",
+                    ));
+                }
+
+                let cg = &room.teams[2].speakers;
+                let mg_i64 = id_of_speaker_uuid(&ballot.mg, conn)?;
+                let gw_i64 = id_of_speaker_uuid(&ballot.gw, conn)?;
+                if !(cg.contains(&mg_i64) && cg.contains(&gw_i64)) {
+                    return Ok(Some(
+                        "Error: the ballot submitted specifies a speaker who is
+                        not assigned to this spar (either MG or GW is
+                        incorrect).",
+                    ));
+                }
+
+                let co = &room.teams[3].speakers;
+                let mo_i64 = id_of_speaker_uuid(&ballot.mo, conn)?;
+                let ow_i64 = id_of_speaker_uuid(&ballot.ow, conn)?;
+                if !(co.contains(&mo_i64) && co.contains(&ow_i64)) {
+                    return Ok(Some(
+                        "Error: the ballot submitted specifies a speaker who is
+                        not assigned to this spar (either MO or OW is
+                        incorrect).",
+                    ));
+                }
+
+                let og_score = ballot.pm_score + ballot.dpm_score;
+                let oo_score = ballot.lo_score + ballot.dlo_score;
+                let cg_score = ballot.mg_score + ballot.gw_score;
+                let co_score = ballot.mo_score + ballot.ow_score;
+
+                if og_score == oo_score {
+                    return Ok(Some(
+                        "Error: OG and OO have the same sum of speaks.",
+                    ));
+                }
+
+                if og_score == cg_score {
+                    return Ok(Some(
+                        "Error: OG and CG have the same sum of speaks.",
+                    ));
+                }
+
+                if og_score == co_score {
+                    return Ok(Some(
+                        "Error: OG and CO have the same sum of speaks.",
+                    ));
+                }
+
+                if oo_score == cg_score {
+                    return Ok(Some(
+                        "Error: OO and CG have the same sum of speaks.",
+                    ));
+                }
+
+                if oo_score == co_score {
+                    return Ok(Some(
+                        "Error: OO and CO have the same sum of speaks.",
+                    ));
+                }
+
+                if cg_score == co_score {
+                    return Ok(Some(
+                        "Error: CG and CO have the same sum of speaks.",
+                    ));
+                }
+
+                Ok(None)
+            })()?;
+
+            if let Some(ballot_error) = ballot_error {
+                return Ok(Err(render_ballot_form(
+                    previous_ballot,
+                    room,
+                    Some(ballot_error),
+                    user,
+                )));
+            }
+
+            let adjudicator_id = spar_adjudicators::table
+                // todo: this should point to the spar_adjudicators table
+                .filter(spar_adjudicators::member_id.eq(key.member_id))
+                .filter(spar_adjudicators::room_id.eq(key.room_id))
+                .select(spar_adjudicators::id)
+                .first::<i64>(conn)?;
+
+            let ballot_id = diesel::insert_into(adjudicator_ballots::table)
+                .values({
+                    (
+                        adjudicator_ballots::public_id
+                            .eq(gen_uuid().to_string()),
+                        adjudicator_ballots::adjudicator_id.eq(adjudicator_id),
+                        adjudicator_ballots::room_id.eq(room.inner.id),
+                        adjudicator_ballots::created_at.eq(diesel::dsl::now),
+                    )
+                })
+                .returning(adjudicator_ballots::id)
+                .get_result::<i64>(conn)?;
+
+            let query = diesel::insert_into(adjudicator_ballot_entries::table)
+                .values(vec![
+                    (
+                        adjudicator_ballot_entries::public_id
+                            .eq(gen_uuid().to_string()),
+                        adjudicator_ballot_entries::ballot_id.eq(ballot_id),
+                        adjudicator_ballot_entries::speaker_id
+                            .eq(id_of_speaker_uuid(&ballot.pm, conn)?),
+                        adjudicator_ballot_entries::team_id
+                            .eq(room.teams[0].inner.id),
+                        adjudicator_ballot_entries::speak.eq(ballot.pm_score),
+                        adjudicator_ballot_entries::position.eq(0),
+                    ),
+                    (
+                        adjudicator_ballot_entries::public_id
+                            .eq(gen_uuid().to_string()),
+                        adjudicator_ballot_entries::ballot_id.eq(ballot_id),
+                        adjudicator_ballot_entries::speaker_id
+                            .eq(id_of_speaker_uuid(&ballot.dpm, conn)?),
+                        adjudicator_ballot_entries::team_id
+                            .eq(room.teams[0].inner.id),
+                        adjudicator_ballot_entries::speak.eq(ballot.dpm_score),
+                        adjudicator_ballot_entries::position.eq(1),
+                    ),
+                    (
+                        adjudicator_ballot_entries::public_id
+                            .eq(gen_uuid().to_string()),
+                        adjudicator_ballot_entries::ballot_id.eq(ballot_id),
+                        adjudicator_ballot_entries::speaker_id
+                            .eq(id_of_speaker_uuid(&ballot.lo, conn)?),
+                        adjudicator_ballot_entries::team_id
+                            .eq(room.teams[1].inner.id),
+                        adjudicator_ballot_entries::speak.eq(ballot.lo_score),
+                        adjudicator_ballot_entries::position.eq(0),
+                    ),
+                    (
+                        adjudicator_ballot_entries::public_id
+                            .eq(gen_uuid().to_string()),
+                        adjudicator_ballot_entries::ballot_id.eq(ballot_id),
+                        adjudicator_ballot_entries::speaker_id
+                            .eq(id_of_speaker_uuid(&ballot.dlo, conn)?),
+                        adjudicator_ballot_entries::team_id
+                            .eq(room.teams[1].inner.id),
+                        adjudicator_ballot_entries::speak.eq(ballot.dlo_score),
+                        adjudicator_ballot_entries::position.eq(1),
+                    ),
+                    (
+                        adjudicator_ballot_entries::public_id
+                            .eq(gen_uuid().to_string()),
+                        adjudicator_ballot_entries::ballot_id.eq(ballot_id),
+                        adjudicator_ballot_entries::speaker_id
+                            .eq(id_of_speaker_uuid(&ballot.mg, conn)?),
+                        adjudicator_ballot_entries::team_id
+                            .eq(room.teams[2].inner.id),
+                        adjudicator_ballot_entries::speak.eq(ballot.mg_score),
+                        adjudicator_ballot_entries::position.eq(0),
+                    ),
+                    (
+                        adjudicator_ballot_entries::public_id
+                            .eq(gen_uuid().to_string()),
+                        adjudicator_ballot_entries::ballot_id.eq(ballot_id),
+                        adjudicator_ballot_entries::speaker_id
+                            .eq(id_of_speaker_uuid(&ballot.gw, conn)?),
+                        adjudicator_ballot_entries::team_id
+                            .eq(room.teams[2].inner.id),
+                        adjudicator_ballot_entries::speak.eq(ballot.gw_score),
+                        adjudicator_ballot_entries::position.eq(1),
+                    ),
+                    (
+                        adjudicator_ballot_entries::public_id
+                            .eq(gen_uuid().to_string()),
+                        adjudicator_ballot_entries::ballot_id.eq(ballot_id),
+                        adjudicator_ballot_entries::speaker_id
+                            .eq(id_of_speaker_uuid(&ballot.mo, conn)?),
+                        adjudicator_ballot_entries::team_id
+                            .eq(room.teams[3].inner.id),
+                        adjudicator_ballot_entries::speak.eq(ballot.mo_score),
+                        adjudicator_ballot_entries::position.eq(0),
+                    ),
+                    (
+                        adjudicator_ballot_entries::public_id
+                            .eq(gen_uuid().to_string()),
+                        adjudicator_ballot_entries::ballot_id.eq(ballot_id),
+                        adjudicator_ballot_entries::speaker_id
+                            .eq(id_of_speaker_uuid(&ballot.ow, conn)?),
+                        adjudicator_ballot_entries::team_id
+                            .eq(room.teams[3].inner.id),
+                        adjudicator_ballot_entries::speak.eq(ballot.ow_score),
+                        adjudicator_ballot_entries::position.eq(1),
+                    ),
+                ]);
+
+            dbg!(diesel::debug_query::<Sqlite, _>(&query).to_string());
+
+            query.execute(conn)?;
+
+            // todo: build this page
+            return Ok(Ok(Redirect::to("/ballots/submit/thanks")));
+        })
+        .unwrap()
+    })
+    .await
+}
+
+#[get("/ballots/view/<ballot_id>")]
+/// Displays a
+pub async fn view_ballot(
+    user: Option<User>,
+    db: DbConn,
+    ballot_id: String,
+) -> Option<Markup> {
+    db.run(move |conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let ballot = adjudicator_ballots::table
+                .filter(adjudicator_ballots::public_id.eq(&ballot_id))
+                .first::<AdjudicatorBallotSubmission>(conn)
+                .optional()?;
+
+            match ballot {
+                None => return Ok(None),
+                Some(ballot) => {
+                    let adjudicator_name = spar_adjudicators::table
+                        .filter(spar_adjudicators::id.eq(ballot.adjudicator_id))
+                        .inner_join(spar_series_members::table)
+                        .select(spar_series_members::name)
+                        .first::<String>(conn)?;
+                    let repr = BallotRepr::of_id(ballot.id, conn)?;
+                    let room = SparRoomRepr::of_id(ballot.room_id, conn)?;
+
+                    let markup = maud::html! {
+                        h3 {"Ballot submitted by " (adjudicator_name)}
+                        (render_ballot(&room, &repr))
+                    };
+
+                    Ok(Some(page_of_body(markup, user)))
+                }
+            }
+        })
+        .unwrap()
+    })
+    .await
 }

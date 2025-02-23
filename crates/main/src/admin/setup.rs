@@ -1,14 +1,18 @@
+// todo: now that the register page exists, integrate this with the register
+// page (i.e. the first time that somebody signs up, make them a superuser)
+
 use argon2::PasswordHasher;
 use argon2::{password_hash::SaltString, Argon2};
+use db::user::User;
 use db::{schema::users, DbConn};
 use diesel::prelude::*;
 use maud::Markup;
 use rand::rngs::OsRng;
 use rocket::{form::Form, response::Redirect};
 use serde::Serialize;
-use uuid::Uuid;
 
 use crate::html::{error_403, page_of_body};
+use crate::model::sync::id::gen_uuid;
 
 fn setup_page_form(error: Option<String>) -> Markup {
     page_of_body(
@@ -18,7 +22,7 @@ fn setup_page_form(error: Option<String>) -> Markup {
                     (err)
                 }
             }
-            form method="POST" class="container" action="/admin/setup/submit" {
+            form method="POST" class="container" action="/admin/setup" {
                 div class="mb-3" {
                     label for="username" class="form-label" { "Username" }
                     input type="text" class="form-control" id="username" name="username" required;
@@ -33,7 +37,7 @@ fn setup_page_form(error: Option<String>) -> Markup {
                 }
                 div class="mb-3" {
                     label for="password2" class="form-label" { "Password confirmation" }
-                    input type="password2" class="form-control" id="password2" name="password2" required;
+                    input type="password" class="form-control" id="password2" name="password2" required;
                 }
                 button type="submit" class="btn btn-primary" { "Create Admin Account" }
             }
@@ -103,6 +107,27 @@ pub async fn do_setup(
                 ))));
             }
 
+            if !User::validate_username(&form.username) {
+                return Ok(Err(setup_page_form(Some(
+                    "Error: names must consist exclusively of letters from the
+                     latin alphabet."
+                        .to_string(),
+                ))));
+            }
+
+            if !User::validate_email(&form.email) {
+                return Ok(Err(setup_page_form(Some(
+                    "Error: your email is not a valid email.".to_string(),
+                ))));
+            }
+
+            if !User::validate_password(&form.password) {
+                return Ok(Err(setup_page_form(Some(
+                    "Error: your password should be at least 6 characters."
+                        .to_string(),
+                ))));
+            }
+
             let password = form.password.as_bytes();
             let salt = SaltString::generate(&mut OsRng);
 
@@ -113,12 +138,13 @@ pub async fn do_setup(
 
             let n = diesel::insert_into(users::table)
                 .values((
-                    users::public_id.eq(Uuid::now_v7().to_string()),
+                    users::public_id.eq(gen_uuid().to_string()),
                     users::username.eq(&form.username),
                     users::password_hash.eq(password_hash),
                     users::email.eq(&form.email),
                     users::is_superuser.eq(true),
                     users::created_at.eq(diesel::dsl::now),
+                    users::email_verified.eq(false),
                 ))
                 .execute(conn)?;
             assert_eq!(n, 1);

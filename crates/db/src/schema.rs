@@ -1,13 +1,24 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    adjudicator_ballot_submissions (id) {
+    adjudicator_ballot_entries (id) {
+        id -> BigInt,
+        public_id -> Text,
+        ballot_id -> BigInt,
+        speaker_id -> BigInt,
+        team_id -> BigInt,
+        speak -> BigInt,
+        position -> BigInt,
+    }
+}
+
+diesel::table! {
+    adjudicator_ballots (id) {
         id -> BigInt,
         public_id -> Text,
         adjudicator_id -> BigInt,
         room_id -> BigInt,
         created_at -> Timestamp,
-        ballot_data -> Text,
     }
 }
 
@@ -52,30 +63,24 @@ diesel::table! {
 }
 
 diesel::table! {
-    spar_room_adjudicator (id) {
+    spar_adjudicator_ballot_links (id) {
         id -> BigInt,
         public_id -> Text,
-        user_id -> BigInt,
+        link -> Text,
+        room_id -> BigInt,
+        member_id -> BigInt,
+        created_at -> Timestamp,
+        expires_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    spar_adjudicators (id) {
+        id -> BigInt,
+        public_id -> Text,
+        member_id -> BigInt,
         room_id -> BigInt,
         status -> Text,
-    }
-}
-
-diesel::table! {
-    spar_room_team_speaker (id) {
-        id -> BigInt,
-        public_id -> Text,
-        user_id -> BigInt,
-        team_id -> BigInt,
-    }
-}
-
-diesel::table! {
-    spar_room_teams (id) {
-        id -> BigInt,
-        public_id -> Text,
-        room_id -> BigInt,
-        position -> BigInt,
     }
 }
 
@@ -100,13 +105,42 @@ diesel::table! {
 }
 
 diesel::table! {
+    spar_series_members (id) {
+        id -> BigInt,
+        public_id -> Text,
+        name -> Text,
+        email -> Text,
+        spar_series_id -> BigInt,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     spar_signups (id) {
         id -> BigInt,
         public_id -> Text,
-        user_id -> BigInt,
+        member_id -> BigInt,
         spar_id -> BigInt,
         as_judge -> Bool,
         as_speaker -> Bool,
+    }
+}
+
+diesel::table! {
+    spar_speakers (id) {
+        id -> BigInt,
+        public_id -> Text,
+        member_id -> BigInt,
+        team_id -> BigInt,
+    }
+}
+
+diesel::table! {
+    spar_teams (id) {
+        id -> BigInt,
+        public_id -> Text,
+        room_id -> BigInt,
+        position -> BigInt,
     }
 }
 
@@ -135,33 +169,43 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(adjudicator_ballot_submissions -> spar_rooms (room_id));
+diesel::joinable!(adjudicator_ballot_entries -> adjudicator_ballots (ballot_id));
+diesel::joinable!(adjudicator_ballot_entries -> spar_speakers (speaker_id));
+diesel::joinable!(adjudicator_ballot_entries -> spar_teams (team_id));
+diesel::joinable!(adjudicator_ballots -> spar_adjudicators (adjudicator_id));
+diesel::joinable!(adjudicator_ballots -> spar_rooms (room_id));
 diesel::joinable!(group_members -> groups (group_id));
 diesel::joinable!(group_members -> users (user_id));
 diesel::joinable!(magic_links -> users (user_id));
-diesel::joinable!(spar_room_adjudicator -> spar_rooms (room_id));
-diesel::joinable!(spar_room_adjudicator -> users (user_id));
-diesel::joinable!(spar_room_team_speaker -> spar_room_teams (team_id));
-diesel::joinable!(spar_room_team_speaker -> users (user_id));
-diesel::joinable!(spar_room_teams -> spar_rooms (room_id));
+diesel::joinable!(spar_adjudicator_ballot_links -> spar_rooms (room_id));
+diesel::joinable!(spar_adjudicator_ballot_links -> spar_series_members (member_id));
+diesel::joinable!(spar_adjudicators -> spar_rooms (room_id));
+diesel::joinable!(spar_adjudicators -> spar_series_members (member_id));
 diesel::joinable!(spar_rooms -> spars (spar_id));
 diesel::joinable!(spar_series -> groups (group_id));
+diesel::joinable!(spar_series_members -> spar_series (spar_series_id));
+diesel::joinable!(spar_signups -> spar_series_members (member_id));
 diesel::joinable!(spar_signups -> spars (spar_id));
-diesel::joinable!(spar_signups -> users (user_id));
+diesel::joinable!(spar_speakers -> spar_series_members (member_id));
+diesel::joinable!(spar_speakers -> spar_teams (team_id));
+diesel::joinable!(spar_teams -> spar_rooms (room_id));
 diesel::joinable!(spars -> spar_series (spar_series_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    adjudicator_ballot_submissions,
+    adjudicator_ballot_entries,
+    adjudicator_ballots,
     emails,
     group_members,
     groups,
     magic_links,
-    spar_room_adjudicator,
-    spar_room_team_speaker,
-    spar_room_teams,
+    spar_adjudicator_ballot_links,
+    spar_adjudicators,
     spar_rooms,
     spar_series,
+    spar_series_members,
     spar_signups,
+    spar_speakers,
+    spar_teams,
     spars,
     users,
 );

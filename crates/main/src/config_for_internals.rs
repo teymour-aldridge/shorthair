@@ -1,7 +1,7 @@
 use chrono::{NaiveDateTime, Utc};
 use db::{
     group::Group,
-    schema::{group_members, groups, spar_series, spars},
+    schema::{group_members, groups, spar_series, spar_series_members, spars},
     spar::{Spar, SparSeries},
     user::User,
     DbConn,
@@ -15,10 +15,13 @@ use rocket::{
     form::Form,
     response::{status::Unauthorized, Redirect},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::html::page_of_body;
+use crate::{
+    html::{error_403, page_of_body},
+    model::sync::id::gen_uuid,
+};
 
 #[get("/spar_series/<internal_id>")]
 /// Displays an overview of the current internals.
@@ -233,4 +236,139 @@ fn create_spar_form(error: Option<String>) -> Markup {
             button type="submit" class="btn btn-primary" { "Submit" }
         }
     }
+}
+
+#[get("/spar_series/<internal_id>/add_member")]
+pub async fn add_member_page(
+    internal_id: String,
+    user: User,
+    db: DbConn,
+) -> Markup {
+    db.run(|conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let t = spar_series::table
+                .filter(spar_series::public_id.eq(internal_id))
+                .inner_join(groups::table)
+                .get_result::<(SparSeries, Group)>(conn)
+                .optional()
+                .unwrap();
+
+            if let Some((internal, institution)) = t {
+                let (_spar_series, group): (SparSeries, Group) =
+                    (internal, institution);
+                let user_is_admin = select(exists(
+                    group_members::table
+                        .filter(group_members::group_id.eq(group.id))
+                        .filter(group_members::user_id.eq(user.id))
+                        .filter(
+                            group_members::has_signing_power
+                                .eq(true)
+                                .or(group_members::is_admin.eq(true)),
+                        ),
+                ))
+                .get_result::<bool>(conn)
+                .unwrap();
+
+                if !user_is_admin {
+                    return Ok(error_403(
+                        Some("Error: you are not authorized to administer this group.".to_string()),
+                        Some(user)
+                    ));
+                }
+
+
+
+                let markup = maud::html! {
+                    h1 { "Add member" }
+                    form method="POST" {
+                        div class="mb-3" {
+                            label for="name" class="form-label" { "Full name" }
+                            input name="name" type="text" class="form-control" id="name" {}
+                        }
+                        div class="mb-3" {
+                            label for="email" class="form-label" { "Email address" }
+                            input name="email" type="email" class="form-control" id="email" {}
+                        }
+                        button type="submit" class="btn btn-primary" { "Add member" }
+                    }
+                };
+                Ok(page_of_body(markup, Some(user)))
+            } else {
+                Ok(error_403(
+                    Some(
+                        "You are not authorized to access this group"
+                            .to_string(),
+                    ),
+                    Some(user),
+                ))
+            }
+        })
+        .unwrap()
+    })
+    .await
+}
+
+#[derive(FromForm, Serialize, Deserialize)]
+pub struct AddMemberForm {
+    pub name: String,
+    pub email: String,
+}
+
+#[post("/spar_series/<internal_id>/add_member", data = "<form>")]
+pub async fn do_add_member(
+    internal_id: String,
+    user: User,
+    db: DbConn,
+    form: Form<AddMemberForm>,
+) -> Markup {
+    db.run(move |conn| {
+        conn.transaction::<_, diesel::result::Error, _>(move |conn| {
+            let (spar_series, group) = spar_series::table
+                .filter(spar_series::public_id.eq(&internal_id))
+                .inner_join(groups::table)
+                .get_result::<(SparSeries, Group)>(conn)?;
+
+            let user_is_admin = select(exists(
+                group_members::table
+                    .filter(group_members::group_id.eq(group.id))
+                    .filter(group_members::user_id.eq(user.id))
+                    .filter(
+                        group_members::has_signing_power
+                            .eq(true)
+                            .or(group_members::is_admin.eq(true)),
+                    ),
+            ))
+            .get_result::<bool>(conn)
+            .unwrap();
+
+            if !user_is_admin {
+                return Ok(error_403(
+                    Some("Error: you are not authorized to administer this group.".to_string()),
+                    Some(user)
+                ));
+            }
+
+            let n = insert_into(spar_series_members::table)
+                .values((
+                    spar_series_members::public_id.eq(gen_uuid().to_string()),
+                    spar_series_members::name.eq(&form.name),
+                    spar_series_members::email.eq(&form.email),
+                    spar_series_members::spar_series_id.eq(spar_series.id),
+                    spar_series_members::created_at.eq(Utc::now().naive_utc()),
+                ))
+                .execute(conn)?;
+
+            assert_eq!(n, 1);
+
+            let markup = html! {
+                h1 { "Member added successfully" }
+                p { "Added " (form.name) " to the spar series." }
+                a href=(format!("/spar_series/{}", internal_id)) { "Return to spar series" }
+            };
+
+            Ok(page_of_body(markup, Some(user)))
+        })
+        .unwrap()
+    })
+    .await
 }

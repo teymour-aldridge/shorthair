@@ -36,13 +36,14 @@ use good_lp::{
 /// Always remember: if it runs in polynomial time, it's efficient (for
 /// constructing the problem instance).
 pub fn solve_lp(
-    participants: Arc<Vec<SparSignup>>,
-    elo_scores: HashMap<usize, f64>,
-) -> Vec<Param> {
-    // maximum number of rooms
-    let r_max = participants
+    person_and_signup_data: Arc<HashMap<i64, SparSignup>>,
+    elo_scores: HashMap<i64, f64>,
+) -> HashMap<i64, Assignment> {
+    // maximum number of rooms (where everyone is assigned to speak)
+    // todo: this number can be reduced
+    let r_max = person_and_signup_data
         .iter()
-        .filter(|signup| signup.as_speaker)
+        .filter(|(_id, signup)| signup.as_speaker)
         .count();
 
     let mut vars = variables!();
@@ -53,7 +54,7 @@ pub fn solve_lp(
     let (x_irj, u_r) = {
         let mut x_irj = HashMap::new();
         let mut u_r = HashMap::new();
-        for (participant_idx, _) in participants.iter().enumerate() {
+        for (participant_id, _) in person_and_signup_data.iter() {
             for room_idx in 0..r_max {
                 // create u_r
                 let room = vars.add(
@@ -73,9 +74,9 @@ pub fn solve_lp(
                 for role in 0..5usize {
                     let variable =
                         vars.add(VariableDefinition::new().binary().name(
-                            format!("x({participant_idx}, {room_idx}, {role})"),
+                            format!("x({participant_id}, {room_idx}, {role})"),
                         ));
-                    x_irj.insert((participant_idx, room_idx, role), variable);
+                    x_irj.insert((participant_id, room_idx, role), variable);
                 }
             }
         }
@@ -86,8 +87,8 @@ pub fn solve_lp(
     let mut constraints = Vec::new();
 
     let () = {
-        for participant_idx in 0..participants.len() {
-            let record = &participants[participant_idx];
+        for participant_id in person_and_signup_data.keys() {
+            let record = &person_and_signup_data[participant_id];
 
             // add judge/speaker constraints
             for room in 0..r_max {
@@ -96,15 +97,15 @@ pub fn solve_lp(
                 assert!(record.as_judge || record.as_speaker);
                 if !record.as_judge {
                     let constraint = constraint! {
-                        x_irj[&(participant_idx, room, 4)] <= 0
+                        x_irj[&(participant_id, room, 4)] <= 0
                     };
                     constraints.push(constraint);
                 }
 
                 if !record.as_speaker {
-                    for role in 0..4usize {
+                    for role in 0..=3usize {
                         let constraint = constraint! {
-                            x_irj[&(participant_idx, room, role)] <= 0
+                            x_irj[&(participant_id, room, role)] <= 0
                         };
                         constraints.push(constraint);
                     }
@@ -116,9 +117,8 @@ pub fn solve_lp(
             //                  AND sum [positions_allocated] <= 1)
             let mut positions_allocated = Expression::default();
             for room in 0..r_max {
-                for role in 0..5usize {
-                    positions_allocated +=
-                        x_irj[&(participant_idx, room, role)];
+                for role in 0..=4usize {
+                    positions_allocated += x_irj[&(participant_id, room, role)];
                 }
             }
             constraints.push(constraint! {
@@ -138,12 +138,12 @@ pub fn solve_lp(
             let mut cg_count = Expression::default();
             let mut co_count = Expression::default();
 
-            for participant_idx in 0..participants.len() {
-                judge_count += x_irj[&(participant_idx, room, 4)];
-                og_count += x_irj[&(participant_idx, room, 0)];
-                oo_count += x_irj[&(participant_idx, room, 1)];
-                cg_count += x_irj[&(participant_idx, room, 2)];
-                co_count += x_irj[&(participant_idx, room, 3)];
+            for participant_id in person_and_signup_data.keys() {
+                judge_count += x_irj[&(participant_id, room, 4)];
+                og_count += x_irj[&(participant_id, room, 0)];
+                oo_count += x_irj[&(participant_id, room, 1)];
+                cg_count += x_irj[&(participant_id, room, 2)];
+                co_count += x_irj[&(participant_id, room, 3)];
             }
 
             constraints.push(constraint!(judge_count.clone() >= u_r[&room]));
@@ -174,10 +174,11 @@ pub fn solve_lp(
         let mut score_per_team = HashMap::new();
 
         let mut difference_between_teams_objective = Expression::default();
+        // here we compute the average speaker score of each team
         for room_idx in 0..r_max {
-            for role in 0..4 {
+            for role in 0..=3 {
                 // efficiency... what does this word "efficiency" mean?
-                let variables_for_this_role_and_room = x_irj
+                let elo_of_team_speakers = x_irj
                     .iter()
                     .filter(
                         |(
@@ -192,28 +193,24 @@ pub fn solve_lp(
                             *r == room_idx && *j == role
                         },
                     )
-                    .map(|((i, _j, _r), v)| {
-                        let score: Expression =
-                            *v * *elo_scores.get(i).unwrap_or(&1500.0);
+                    .map(|((i, _j, _r), lp_variable)| {
+                        let score: Expression = (*lp_variable)
+                            * (*elo_scores.get(i).unwrap_or(&1500.0));
                         score
                     })
                     .collect::<Vec<_>>();
 
                 score_per_team.insert(
                     (room_idx, role),
-                    variables_for_this_role_and_room
+                    elo_of_team_speakers
                         .iter()
-                        .map(|exp| {
-                            exp.clone()
-                                / (variables_for_this_role_and_room.len()
-                                    as f64)
-                        })
+                        .map(|exp| exp.clone() / 2)
                         .sum::<Expression>(),
                 );
             }
 
-            for r1 in 0..4 {
-                for r2 in (r1 + 1)..4 {
+            for r1 in 0..=3 {
+                for r2 in (r1 + 1)..=3 {
                     let team_1 = score_per_team[&(room_idx, r1)].clone();
                     let team_2 = score_per_team[&(room_idx, r2)].clone();
 
@@ -235,6 +232,7 @@ pub fn solve_lp(
                 }
             }
         }
+
         difference_between_teams_objective
     };
 
@@ -260,56 +258,57 @@ pub fn solve_lp(
                 + /* todo: multiplier here */ difference_between_speakers_objective
                 + /* todo: multiplier here */ fewer_rooms_objective,
         )
-        .using(good_lp::solvers::highs::highs);
+        .using(good_lp::solvers::scip::scip);
 
     // add constraints to problem
     for constraint in constraints {
         problem = problem.with(constraint);
     }
 
-    let solution = problem
-        .set_solver(good_lp::solvers::highs::HighsSolverType::Choose)
-        .solve()
-        .unwrap();
+    let solution = problem.solve().unwrap();
 
-    let mut params = vec![None; participants.len()];
+    let mut params = HashMap::new();
 
-    for ((participant_idx, room, role), variable) in x_irj.iter() {
+    for ((participant_id, room, role), variable) in x_irj.iter() {
         let value = solution.value(*variable);
         // might have rounding error
         if value >= 0.95 {
-            match params[*participant_idx] {
-                Some(_) => panic!(
-                    "Error in ILP formulation, as this solution is not valid!"
-                ),
+            match params.get_mut(*participant_id) {
+                Some(_) => {
+                    panic!(
+                        "Error in ILP formulation, as this solution is not valid!"
+                    )
+                }
                 None => {
-                    *params.get_mut(*participant_idx).unwrap() =
-                        Some(match role {
-                            0 => Param::Team {
+                    params.insert(
+                        **participant_id,
+                        match role {
+                            0 => Assignment::Team {
                                 room: *room,
                                 team: Team::Og,
                             },
-                            1 => Param::Team {
+                            1 => Assignment::Team {
                                 room: *room,
                                 team: Team::Oo,
                             },
-                            2 => Param::Team {
+                            2 => Assignment::Team {
                                 room: *room,
                                 team: Team::Cg,
                             },
-                            3 => Param::Team {
+                            3 => Assignment::Team {
                                 room: *room,
                                 team: Team::Co,
                             },
-                            4 => Param::Judge(*room),
+                            4 => Assignment::Judge(*room),
                             _ => unreachable!(),
-                        });
+                        },
+                    );
                 }
             }
         }
     }
 
-    params.into_iter().map(Option::unwrap).collect::<Vec<_>>()
+    params
 }
 
 #[derive(Hash, Eq, PartialEq, PartialOrd, Ord, Clone, Copy, Debug)]
@@ -321,7 +320,7 @@ pub enum Team {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Param {
+pub enum Assignment {
     // allocate to the given team in the given room
     Team { room: usize, team: Team },
     // put on a panel in the nth room
@@ -331,55 +330,64 @@ pub enum Param {
 /// A room reconstructed from the solver output.
 #[derive(Debug, Clone)]
 pub struct SolverRoom {
-    /// The panel. Note that each item in this list provides an index into
-    /// the list of
-    pub panel: Vec<usize>,
-    pub teams: HashMap<Team, HashSet<usize>>,
+    /// The panel.
+    pub panel: HashSet<i64>,
+    pub teams: HashMap<
+        Team,
+        // maps each team (Og, Oo, Cg, Co) to the set of speakers
+        HashSet<i64>,
+    >,
 }
 
-pub fn rooms_of_params(params: &[Param]) -> HashMap<usize, SolverRoom> {
+pub fn rooms_of_speaker_assignments(
+    params: &HashMap<i64, Assignment>,
+) -> HashMap<usize, SolverRoom> {
     let mut rooms: HashMap<usize, SolverRoom> = HashMap::new();
 
     // fill in the rooms hashmap
-    for (person_idx, allocated_as) in params.iter().enumerate() {
+    for (speaker_id, allocated_as) in params.iter() {
         match allocated_as {
-            Param::Team { room, team } => {
+            Assignment::Team { room, team } => {
                 rooms
                     .entry(*room)
                     .and_modify(|room| {
                         room.teams
                             .entry(*team)
                             .and_modify(|t| {
-                                t.insert(person_idx);
+                                t.insert(*speaker_id);
                             })
                             .or_insert({
                                 let mut t = HashSet::new();
-                                t.insert(person_idx);
+                                t.insert(*speaker_id);
                                 t
                             });
                     })
                     .or_insert(SolverRoom {
-                        panel: vec![],
+                        panel: HashSet::new(),
                         teams: {
                             let mut t = HashMap::new();
                             t.insert(*team, {
                                 let mut x = HashSet::new();
-                                x.insert(person_idx);
+                                x.insert(*speaker_id);
                                 x
                             });
                             t
                         },
                     });
             }
-            Param::Judge(room) => {
+            Assignment::Judge(room) => {
                 rooms
                     .entry(*room)
                     .and_modify(|room| {
-                        room.panel.push(person_idx);
+                        room.panel.insert(*speaker_id);
                     })
                     .or_insert({
                         SolverRoom {
-                            panel: vec![person_idx],
+                            panel: {
+                                let mut t = HashSet::with_capacity(3);
+                                t.insert(*speaker_id);
+                                t
+                            },
                             teams: Default::default(),
                         }
                     });
@@ -411,52 +419,76 @@ mod test_allocations {
 
     use crate::spar_allocation::solve_allocation::solve_lp;
 
-    use super::{rooms_of_params, Param};
+    use super::{rooms_of_speaker_assignments, Assignment};
 
     fn generate_participants(
         judges: usize,
         speakers: usize,
         both: usize,
-    ) -> Vec<SparSignup> {
-        let mut ret = Vec::new();
-        let mut c = 0;
-        let mut incr_c = || {
-            let t = c;
-            c += 1;
+    ) -> HashMap<i64, SparSignup> {
+        let mut ret = HashMap::new();
+        let mut member_id = 0;
+        let mut signup_id = 0;
+        let mut incr_member_id = || -> i64 {
+            let t = member_id;
+            member_id += 1;
+            t
+        };
+        let mut incr_signup_id = || -> i64 {
+            let t = signup_id;
+            signup_id += 1;
             t
         };
 
         for _ in 0..judges {
-            ret.push(SparSignup {
-                id: incr_c(),
-                public_id: "64abde2a-ed68-49da-a4d8-860ebefe6f98".to_string(),
-                user_id: incr_c(),
-                spar_id: 0,
-                as_judge: true,
-                as_speaker: false,
-            })
+            let id = incr_member_id();
+
+            ret.insert(
+                id,
+                SparSignup {
+                    id: incr_signup_id(),
+                    public_id: "64abde2a-ed68-49da-a4d8-860ebefe6f98"
+                        .to_string(),
+                    member_id: id,
+                    spar_id: 0,
+                    as_judge: true,
+                    as_speaker: false,
+                },
+            );
         }
 
         for _ in 0..speakers {
-            ret.push(SparSignup {
-                id: incr_c(),
-                public_id: "64abde2a-ed68-49da-a4d8-860ebefe6f98".to_string(),
-                user_id: incr_c(),
-                spar_id: 0,
-                as_judge: false,
-                as_speaker: true,
-            })
+            let member_id = incr_member_id();
+            let signup_id = incr_signup_id();
+            ret.insert(
+                member_id,
+                SparSignup {
+                    id: signup_id,
+                    public_id: "64abde2a-ed68-49da-a4d8-860ebefe6f98"
+                        .to_string(),
+                    member_id,
+                    spar_id: 0,
+                    as_judge: false,
+                    as_speaker: true,
+                },
+            );
         }
 
         for _ in 0..both {
-            ret.push(SparSignup {
-                id: incr_c(),
-                public_id: "64abde2a-ed68-49da-a4d8-860ebefe6f98".to_string(),
-                user_id: incr_c(),
-                spar_id: 0,
-                as_judge: true,
-                as_speaker: true,
-            })
+            let member_id = incr_member_id();
+            let signup_id = incr_signup_id();
+            ret.insert(
+                member_id,
+                SparSignup {
+                    id: signup_id,
+                    public_id: "64abde2a-ed68-49da-a4d8-860ebefe6f98"
+                        .to_string(),
+                    member_id,
+                    spar_id: 0,
+                    as_judge: true,
+                    as_speaker: true,
+                },
+            );
         }
 
         ret
@@ -467,15 +499,14 @@ mod test_allocations {
         let participants = Arc::new(generate_participants(3, 24, 0));
         let elo_scores = participants
             .iter()
-            .enumerate()
-            .map(|(idx, _)| (idx, 1500.0))
+            .map(|(member_id, _signup)| (*member_id, 25.0))
             .collect::<HashMap<_, _>>();
 
         let opt = solve_lp(participants, elo_scores);
 
         assert_solution_valid(opt.clone());
 
-        assert_eq!(rooms_of_params(&opt).len(), 3);
+        assert_eq!(rooms_of_speaker_assignments(&opt).len(), 3);
     }
 
     #[test]
@@ -483,15 +514,14 @@ mod test_allocations {
         let participants = Arc::new(generate_participants(1, 16, 3));
         let elo_scores = participants
             .iter()
-            .enumerate()
-            .map(|(idx, _)| (idx, 1500.0))
+            .map(|(member_id, _signup)| (*member_id, 25.0))
             .collect::<HashMap<_, _>>();
 
         let opt = solve_lp(participants, elo_scores);
 
         assert_solution_valid(opt.clone());
 
-        assert_eq!(rooms_of_params(&opt).len(), 2);
+        assert_eq!(rooms_of_speaker_assignments(&opt).len(), 2);
     }
 
     #[test]
@@ -499,15 +529,14 @@ mod test_allocations {
         let participants = Arc::new(generate_participants(0, 8, 1));
         let elo_scores = participants
             .iter()
-            .enumerate()
-            .map(|(idx, _)| (idx, 1500.0))
+            .map(|(member_id, _signup)| (*member_id, 25.0))
             .collect::<HashMap<_, _>>();
 
         let opt = solve_lp(participants, elo_scores);
 
         assert_solution_valid(opt.clone());
 
-        assert_eq!(rooms_of_params(&opt).len(), 1);
+        assert_eq!(rooms_of_speaker_assignments(&opt).len(), 1);
     }
 
     #[test]
@@ -515,15 +544,14 @@ mod test_allocations {
         let participants = Arc::new(generate_participants(0, 7, 1));
         let elo_scores = participants
             .iter()
-            .enumerate()
-            .map(|(idx, _)| (idx, 1500.0))
+            .map(|(member_id, _signup)| (*member_id, 25.0))
             .collect::<HashMap<_, _>>();
 
         let opt = solve_lp(participants, elo_scores);
 
         assert_solution_valid(opt.clone());
 
-        assert_eq!(rooms_of_params(&opt).len(), 1);
+        assert_eq!(rooms_of_speaker_assignments(&opt).len(), 1);
     }
 
     #[test]
@@ -531,25 +559,27 @@ mod test_allocations {
         let participants = Arc::new(generate_participants(10 * 3, 10 * 8, 0));
         let elo_scores = participants
             .iter()
-            .enumerate()
-            .map(|(idx, _)| (idx, 1500.0))
+            .map(|(member_id, _signup)| (*member_id, 25.0))
             .collect::<HashMap<_, _>>();
 
         let opt = solve_lp(participants, elo_scores);
 
         assert_solution_valid(opt.clone());
 
-        assert_eq!(rooms_of_params(&opt).len(), 10);
+        assert_eq!(rooms_of_speaker_assignments(&opt).len(), 10);
     }
 
-    fn assert_solution_valid(opt: Vec<Param>) {
+    fn assert_solution_valid(opt: HashMap<i64, Assignment>) {
+        // we first generate a hashset of live rooms
         let rooms = {
             let mut rooms = HashSet::new();
 
-            for param in &opt {
+            for (_speaker_id, param) in &opt {
                 match param {
-                    super::Param::Team { room, team: _ } => rooms.insert(room),
-                    super::Param::Judge(room) => rooms.insert(room),
+                    super::Assignment::Team { room, team: _ } => {
+                        rooms.insert(room)
+                    }
+                    super::Assignment::Judge(room) => rooms.insert(room),
                 };
             }
 
@@ -559,11 +589,11 @@ mod test_allocations {
         for room in rooms {
             let judges = opt
                 .iter()
-                .filter(|param| match param {
-                    super::Param::Team { room: _, team: _ } => false,
-                    super::Param::Judge(_room) => true,
+                .filter_map(|(member_id, assignment)| match assignment {
+                    super::Assignment::Team { room: _, team: _ } => None,
+                    super::Assignment::Judge(_room) => Some(member_id),
                 })
-                .collect::<Vec<_>>();
+                .collect::<HashSet<_>>();
             assert!(
                 judges.len() > 0,
                 "error: judges too short! note: room={room}"
@@ -571,9 +601,8 @@ mod test_allocations {
 
             let teams = opt
                 .iter()
-                .enumerate()
                 .filter_map(|(i, param)| match param {
-                    super::Param::Team { room: r, team } if room == r => {
+                    super::Assignment::Team { room: r, team } if room == r => {
                         Some((i, team))
                     }
                     _ => None,
@@ -601,6 +630,18 @@ mod test_allocations {
                     }
                 };
             }
+
+            assert_eq!(og.intersection(&judges).next(), None);
+            assert_eq!(oo.intersection(&judges).next(), None);
+            assert_eq!(cg.intersection(&judges).next(), None);
+            assert_eq!(co.intersection(&judges).next(), None);
+
+            assert_eq!(og.intersection(&oo).next(), None);
+            assert_eq!(og.intersection(&cg).next(), None);
+            assert_eq!(og.intersection(&co).next(), None);
+            assert_eq!(oo.intersection(&cg).next(), None);
+            assert_eq!(oo.intersection(&co).next(), None);
+            assert_eq!(cg.intersection(&co).next(), None);
 
             assert!(
                 1 <= og.len() && og.len() <= 2,

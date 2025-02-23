@@ -1,207 +1,302 @@
+//! Signup for spars.
+//!
+//! This is currently quite a trusting model (it assumes that people will not
+//! maliciously - or accidentally - modify other people's signups).
+
 use db::{
-    schema::{spar_signups, spars},
-    spar::{Spar, SparSignup},
+    schema::{spar_series_members, spar_signups, spars},
+    spar::{Spar, SparSeriesMember, SparSignup},
     user::User,
     DbConn,
 };
 use diesel::prelude::*;
 use diesel::Connection;
-use either::Either::{self, Right};
 use maud::Markup;
-use rocket::{form::Form, response::Redirect};
+use rocket::form::Form;
 use serde::Serialize;
-use uuid::Uuid;
 
-use crate::html::page_of_body;
+use crate::{
+    html::{error_403, page_of_body},
+    model::sync::id::gen_uuid,
+};
 
 #[get("/spars/<spar_id>/signup")]
-pub async fn spar_signup_page(
+pub async fn spar_signup_search_page(
     spar_id: String,
     db: DbConn,
-    user: User,
-) -> Option<Either<Markup, Redirect>> {
-    db.run(|conn| {
+    user: Option<User>,
+) -> Option<Markup> {
+    db.run(move |conn| {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            let spar: Spar = match spars::table
-                .filter(spars::public_id.eq(spar_id))
+            let spar = spars::table
+                .filter(spars::public_id.eq(&spar_id))
                 .first::<Spar>(conn)
-                .optional()?
-            {
-                Some(spar) => spar,
-                None => return Ok(None),
-            };
+                .optional()?;
 
-            if spar.release_draw {
-                assert!(!spar.is_open);
-                return Ok(Some(Either::Right(Redirect::to(format!("/spars/{}/viewdraw", spar.public_id.clone())))));
-            }
-
-            if !spar.is_open {
-                return Ok(Some(Either::Left(page_of_body(maud::html! {
-                    div class="alert alert-danger" {
-                        "This spar has closed and is no longer accepting signups."
+            Ok(spar.map(move |_| {
+                let markup = maud::html! {
+                    form method="post" {
+                        div class="mb-3" {
+                            label for="query" class="form-label" {
+                                "Name"
+                            }
+                            input type="text" class="form-control" id="query" name="query" aria-describedby="queryHelp" {}
+                            div id="queryHelp" class="form-text" {
+                                "This is not case sensitive."
+                            }
+                        }
+                        button type="submit" class="btn btn-primary" { "Search" }
                     }
-                }, Some(user)))));
-            }
+                };
 
-            let prev_signup = spar_signups::table
-                .filter(spar_signups::user_id.eq(user.id))
-                .filter(spar_signups::spar_id.eq(spar.id))
-                .first::<SparSignup>(conn)
-                .optional()?
-                .map(|signup| {
-                    SparSignupForm {
-                        as_judge: signup.as_judge,
-                        as_speaker: signup.as_speaker
-                    }
-                });
-
-            Ok(Some(Either::Left(render_spar_signup_form(prev_signup, Some(user)))))
+                page_of_body(markup, user)
+            }))
         })
         .unwrap()
     })
     .await
 }
 
-fn render_spar_signup_form(
-    prev: Option<SparSignupForm>,
-    user: Option<User>,
-) -> Markup {
-    page_of_body(
-        maud::html! {
-            @if prev.is_some() {
-                div class="alert alert-warning" role="alert" {
-                    "You have already signed up for this spar.
-                     Submitting this form again will edit your status."
-                }
-            }
-            form method="post" class="form" {
-                div class="mb-3" {
-                    div class="form-check" {
-                        input type="checkbox"
-                            name="as_judge"
-                            class="form-check-input"
-                            id="as_judge_check"
-                            checked[
-                                prev
-                                    .as_ref()
-                                    .map(|prev| prev.as_judge)
-                                    .unwrap_or(false)
-                            ];
-                        label for="as_judge_check"
-                            class="form-check-label" {
-                            "Sign up as judge"
-                        }
-                    }
-                }
-                div class="mb-3" {
-                    div class="form-check" {
-                        input type="checkbox"
-                            name="as_speaker"
-                            class="form-check-input"
-                            id="as_speaker_check"
-                            checked[
-                                prev
-                                    .as_ref()
-                                    .map(|prev| prev.as_speaker)
-                                    .unwrap_or(false)
-                            ];
-                        label for="as_speaker_check"
-                            class="form-check-label" {
-                            "Sign up as speaker"
-                        }
-                    }
-                }
-                button type="submit" class="btn btn-primary" { "Submit" }
-            }
-        },
-        user,
-    )
+#[derive(FromForm)]
+pub struct SearchForm {
+    query: String,
 }
 
-#[derive(FromForm, Debug, Serialize)]
-pub struct SparSignupForm {
-    // todo: how does Rocket parse these?
+#[post("/spars/<spar_id>/signup", data = "<search>")]
+pub async fn do_spar_signup_search(
+    spar_id: String,
+    db: DbConn,
+    search: Form<SearchForm>,
+    user: Option<User>,
+) -> Option<Markup> {
+    db.run(move |conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let spar = spars::table
+                .filter(spars::public_id.eq(&spar_id))
+                .first::<Spar>(conn)
+                .optional()?;
+
+            let query = search.query.clone();
+
+            if let Some(spar) = spar {
+                let raw_query = format!(
+                    "SELECT ssm.*
+                     FROM spar_series_members_fts fts
+                     INNER JOIN spar_series_members ssm ON ssm.id = fts.rowid
+                     WHERE ssm.spar_series_id = ? AND fts.name MATCH ?
+                     ORDER BY rank"
+                );
+
+                let matches = diesel::sql_query(raw_query)
+                    .bind::<diesel::sql_types::BigInt, _>(spar.spar_series_id)
+                    .bind::<diesel::sql_types::Text, _>(format!("{}*", query))
+                    .load::<SparSeriesMember>(conn)?;
+
+                let markup = maud::html! {
+                    form method="post" {
+                        div class="mb-3" {
+                            label for="query" class="form-label" {
+                                "Name"
+                            }
+                            input type="name" class="form-control" id="query" name="query" aria-describedby="queryHelp" {}
+                            div id="queryHelp" class="form-text" {
+                                "This is not case sensitive."
+                            }
+                        }
+                        button type="submit" class="btn btn-primary" { "Search" }
+                    }
+
+                    hr {}
+
+                    h3 {"Search results"}
+
+                    @if matches.is_empty() {
+                        h5 {"Unfortunately no results were found for that user.
+                             Please ask the spar administrator to enter your
+                             name into the system."}
+                    } else {
+                        table class="table" {
+                            thead {
+                                tr {
+                                    th scope="col" { "Name" }
+                                    th scope="col" { "Register link" }
+                                }
+                            }
+                            tbody {
+                                @for member in &matches {
+                                    tr {
+                                        td { (member.name) }
+                                        td {
+                                            a href={"/spars/" (spar_id) "/reg/" (member.public_id)} {
+                                                "Register"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
+
+                Ok(Some(page_of_body(markup, user)))
+            } else {
+                return Ok(None);
+            }
+        })
+        .unwrap()
+    })
+    .await
+}
+
+#[get("/spars/<spar_id>/reg/<member_id>")]
+pub async fn register_for_spar_page(
+    db: DbConn,
+    spar_id: String,
+    member_id: String,
+    user: Option<User>,
+) -> Option<Markup> {
+    db.run(|conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let spar = spars::table
+                .filter(spars::public_id.eq(spar_id))
+                .first::<Spar>(conn)
+                .optional()?;
+
+            let member = spar_series_members::table
+                .filter(spar_series_members::public_id.eq(member_id))
+                .first::<SparSeriesMember>(conn)
+                .optional()?;
+
+            let (spar, member) = match (spar, member) {
+                (Some(spar), Some(member)) => (spar, member),
+                _ => return Ok(None),
+            };
+
+            if spar.release_draw || !spar.is_open {
+                return Ok(Some(error_403(
+                    Some(
+                        "Error: the draw for this spar has already been
+                            released (you can no longer sign up)."
+                            .to_string(),
+                    ),
+                    user,
+                )));
+            }
+
+            let prev = spar_signups::table
+                .filter(spar_signups::spar_id.eq(spar.id))
+                .filter(spar_signups::member_id.eq(member.id))
+                .first::<SparSignup>(conn)
+                .optional()?;
+
+            let markup = maud::html! {
+                form method="post" class="form" {
+                    div class="mb-3" {
+                        div class="form-check" {
+                            input type="checkbox"
+                                name="as_judge"
+                                class="form-check-input"
+                                id="as_judge_check"
+                                checked[
+                                    prev
+                                        .as_ref()
+                                        .map(|prev| prev.as_judge)
+                                        .unwrap_or(false)
+                                ];
+                            label for="as_judge_check"
+                                class="form-check-label" {
+                                "Sign up as judge"
+                            }
+                        }
+                    }
+                    div class="mb-3" {
+                        div class="form-check" {
+                            input type="checkbox"
+                                name="as_speaker"
+                                class="form-check-input"
+                                id="as_speaker_check"
+                                checked[
+                                    prev
+                                        .as_ref()
+                                        .map(|prev| prev.as_speaker)
+                                        .unwrap_or(false)
+                                ];
+                            label for="as_speaker_check"
+                                class="form-check-label" {
+                                "Sign up as speaker"
+                            }
+                        }
+                    }
+                    button type="submit" class="btn btn-primary" { "Submit" }
+                }
+            };
+
+            Ok(Some(page_of_body(markup, user)))
+        })
+        .unwrap()
+    })
+    .await
+}
+
+#[derive(FromForm, Serialize)]
+pub struct SignupForSpar {
     pub as_judge: bool,
     pub as_speaker: bool,
 }
 
-#[post("/spars/<spar_id>/signup", data = "<form>")]
-pub async fn do_spar_signup(
-    spar_id: String,
+#[post("/spars/<spar_id>/reg/<member_id>", data = "<form>")]
+pub async fn do_register_for_spar(
     db: DbConn,
-    user: User,
-    form: Form<SparSignupForm>,
-) -> Option<Either<Markup, Redirect>> {
+    spar_id: String,
+    member_id: String,
+    form: Form<SignupForSpar>,
+    user: Option<User>,
+) -> Markup {
     db.run(move |conn| {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            let spar: Spar = match spars::table
+            let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
-                .first::<Spar>(conn)
-                .optional()?
-            {
-                Some(spar) => spar,
-                // todo: ensure Rocket renders 404 errors correctly
-                None => return Ok(None),
-            };
+                .first::<Spar>(conn)?;
 
-            if spar.release_draw {
-                assert!(!spar.is_open);
-                return Ok(
+            if spar.release_draw || !spar.is_open {
+                return Ok(error_403(
                     Some(
-                        Either::Right(
-                            Redirect::to(
-                                format!("/spars/{}/viewdraw",
-                                        spar.public_id.clone())
-                            )
-                        )
-                    )
-                );
+                        "Error: the draw for this spar has already been
+                          released (you can no longer sign up)."
+                            .to_string(),
+                    ),
+                    None,
+                ));
             }
 
-            if !spar.is_open {
-                return Ok(Some(Either::Left(page_of_body(maud::html! {
-                    div class="alert alert-danger" {
-                        "This spar has closed and is no longer accepting signups."
-                    }
-                }, Some(user)))));
-            }
+            let member = spar_series_members::table
+                .filter(spar_series_members::public_id.eq(&member_id))
+                .first::<SparSeriesMember>(conn)?;
 
-            let prev_signup = spar_signups::table
-                .filter(spar_signups::user_id.eq(user.id))
-                .filter(spar_signups::spar_id.eq(spar.id))
-                .first::<SparSignup>(conn)
-                .optional()?;
+            diesel::insert_into(spar_signups::table)
+                .values((
+                    spar_signups::public_id.eq(gen_uuid().to_string()),
+                    spar_signups::spar_id.eq(spar.id),
+                    spar_signups::member_id.eq(member.id),
+                    spar_signups::as_judge.eq(form.as_judge),
+                    spar_signups::as_speaker.eq(form.as_speaker),
+                ))
+                .on_conflict((spar_signups::spar_id, spar_signups::member_id))
+                .do_update()
+                .set((
+                    spar_signups::as_judge.eq(form.as_judge),
+                    spar_signups::as_speaker.eq(form.as_speaker),
+                ))
+                .execute(conn)?;
 
-            match prev_signup {
-                Some(signup) => {
-                    let n =
-                        diesel::update(
-                            spar_signups::table
-                                .filter(spar_signups::id.eq(signup.id))
-                        )
-                        .set(
-                            ((spar_signups::as_judge.eq(form.as_judge)),
-                            (spar_signups::as_speaker.eq(form.as_speaker)))
-                        )
-                        .execute(conn)?;
-                    assert_eq!(n, 1);
+            Ok(page_of_body(
+                maud::html! {
+                    p { "Successfully registered!" }
                 },
-                None => {
-                    let n = diesel::insert_into(spar_signups::table)
-                        .values(
-                            (spar_signups::public_id.eq(Uuid::now_v7().to_string()),
-                                spar_signups::user_id.eq(user.id),
-                                spar_signups::spar_id.eq(spar.id),
-                                spar_signups::as_judge.eq(form.as_judge),
-                                spar_signups::as_speaker.eq(form.as_speaker))
-                        ).execute(conn)?;
-                    assert_eq!(n, 1);
-                },
-            };
-
-            Ok(Some(Right(Redirect::to(format!("/spars/{spar_id}/signup")))))
-        }).unwrap()
+                user,
+            ))
+        })
+        .unwrap()
     })
     .await
 }

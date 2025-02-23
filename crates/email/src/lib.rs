@@ -3,7 +3,7 @@ use db::DbConn;
 use std::sync::Arc;
 
 #[cfg(debug_assertions)]
-pub async fn send_mail(
+pub fn send_mail(
     _to: Vec<(&str, &str)>,
     _subject: &str,
     _html_contents: &str,
@@ -13,14 +13,14 @@ pub async fn send_mail(
 }
 
 #[cfg(not(debug_assertions))]
-pub async fn send_mail(
+pub fn send_mail(
     to: Vec<(&str, &str)>,
     subject: &str,
     html_contents: &str,
     text_contents: &str,
     db: Arc<DbConn>,
 ) {
-    send_mail_internal(to, html_contents, text_contents, db).await
+    send_mail_internal(to, subject, html_contents, text_contents, db)
 }
 
 #[allow(unused)]

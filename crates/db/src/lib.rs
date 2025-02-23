@@ -1,5 +1,9 @@
+#![feature(coverage_attribute)]
+
+pub mod ballot;
 pub mod group;
 pub mod magic_link;
+pub mod room;
 /// Database schema
 pub mod schema;
 pub mod spar;

@@ -1,29 +1,42 @@
 use arbitrary::Arbitrary;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
+use fuzzcheck::{mutators::option::OptionMutator, DefaultMutator};
+use fuzzcheck_util::{
+    chrono_mutators::{naive_date_time_mutator, NaiveDateTimeMutator},
+    useful_string_mutator::{useful_string_mutator, UsefulStringMutator},
+};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use rocket::{
     http::{Cookie, CookieJar, Status},
     outcome::try_outcome,
     request::{self, FromRequest},
     Request,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    schema::{self, spar_room_adjudicator, spar_rooms, spars},
+    schema::{self},
     DbConn,
 };
 
 pub const LOGIN_COOKIE: &str = "jeremy_bearimy";
 
-#[derive(Debug, Queryable, Serialize, Clone, Arbitrary)]
+#[derive(
+    Debug, Queryable, Serialize, Deserialize, Clone, Arbitrary, DefaultMutator,
+)]
 pub struct User {
     pub id: i64,
     pub public_id: String,
+    #[field_mutator(OptionMutator<String, UsefulStringMutator> = { OptionMutator::new(useful_string_mutator()) })]
     pub username: Option<String>,
+    #[field_mutator(UsefulStringMutator = { useful_string_mutator() })]
     pub email: String,
     pub email_verified: bool,
+    #[field_mutator(OptionMutator<String, UsefulStringMutator> = { OptionMutator::new(useful_string_mutator()) })]
     pub password_hash: Option<String>,
+    #[field_mutator(NaiveDateTimeMutator = { naive_date_time_mutator() })]
     pub created_at: NaiveDateTime,
     pub is_superuser: bool,
 }
@@ -34,6 +47,21 @@ type WithName<'a> =
 type WithPublicId<'a> =
     diesel::dsl::Eq<crate::schema::users::public_id, &'a str>;
 
+pub fn is_valid_email(string: &str) -> bool {
+    static RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(
+        r#"(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])"#
+    ).unwrap()
+    });
+    RE.is_match(string)
+}
+
+#[cfg(test)]
+#[test]
+fn test_email() {
+    assert!(is_valid_email("hello@example.com"))
+}
+
 impl User {
     pub fn with_public_id(pid: &str) -> WithPublicId {
         crate::schema::users::public_id.eq(pid)
@@ -42,17 +70,19 @@ impl User {
     pub fn with_name(name: &str) -> WithName {
         crate::schema::users::username.eq(Some(name))
     }
-}
 
-#[diesel::dsl::auto_type]
-/// Find the record (if any) which stores information about this user as an
-/// adjudicator in this session.
-pub fn adj_of_user_in_session(user: &User, session_id: String) -> _ {
-    let user_id: i64 = user.id;
-    spar_room_adjudicator::table
-        .filter(spar_room_adjudicator::user_id.eq(user_id))
-        .inner_join(spar_rooms::table.inner_join(spars::table))
-        .filter(spars::public_id.eq(session_id))
+    pub fn validate_email(email: &str) -> bool {
+        is_valid_email(email)
+    }
+
+    pub fn validate_username(username: &str) -> bool {
+        (username.chars().count() > 3)
+            && username.chars().all(|c| c.is_ascii() && c.is_alphabetic())
+    }
+
+    pub fn validate_password(password: &str) -> bool {
+        password.len() > 6
+    }
 }
 
 #[derive(Debug)]
@@ -82,10 +112,7 @@ impl<'r> FromRequest<'r> for User {
         let login_cookie = match request.cookies().get_private(LOGIN_COOKIE) {
             Some(cookie) => cookie,
             None => {
-                return rocket::request::Outcome::Error((
-                    Status::BadRequest,
-                    AuthError::CookieMissingOrMalformed,
-                ));
+                return rocket::request::Outcome::Forward(Status::Unauthorized);
             }
         };
 
@@ -98,10 +125,9 @@ impl<'r> FromRequest<'r> for User {
                     // we need to remove cookie if incorrectly formatted, as they
                     // will otherwise persist and prevent the user from logging in
                     request.cookies().remove_private(LOGIN_COOKIE);
-                    return rocket::request::Outcome::Error((
-                        Status::BadRequest,
-                        AuthError::CookieMissingOrMalformed,
-                    ));
+                    return rocket::request::Outcome::Forward(
+                        Status::Unauthorized,
+                    );
                 }
             };
 
