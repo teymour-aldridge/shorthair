@@ -52,6 +52,7 @@ pub mod id_gen;
 pub mod model;
 pub mod signup_for_spar;
 pub mod spar_allocation;
+pub mod tests;
 pub mod util;
 
 #[macro_use]

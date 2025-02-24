@@ -1,7 +1,8 @@
 use arbitrary::Arbitrary;
 use db::{
     ballot::{
-        AdjudicatorBallotSubmission, BallotRepr, SparAdjudicatorBallotLink,
+        AdjudicatorBallot, AdjudicatorBallotLink, BallotRepr, Scoresheet,
+        SpeakerScoresheet, TeamScoresheet,
     },
     room::SparRoomRepr,
     schema::{
@@ -12,7 +13,7 @@ use db::{
     user::User,
     DbConn,
 };
-use diesel::{prelude::*, sqlite::Sqlite};
+use diesel::prelude::*;
 use fuzzcheck::DefaultMutator;
 use maud::Markup;
 use rocket::{form::Form, response::Redirect};
@@ -37,7 +38,7 @@ pub async fn submit_ballot_page(
                     spar_adjudicator_ballot_links::expires_at
                         .gt(diesel::dsl::now),
                 )
-                .first::<SparAdjudicatorBallotLink>(conn)
+                .first::<AdjudicatorBallotLink>(conn)
                 .optional()?
             {
                 Some(key) => key,
@@ -69,7 +70,7 @@ pub async fn submit_ballot_page(
                     None
                 };
 
-            Ok(render_ballot_form(previous_ballot, room, None, user))
+            Ok(render_ballot_form(previous_ballot, room, None, user, false))
         })
         .unwrap()
     })
@@ -174,11 +175,19 @@ pub fn render_ballot(room: &SparRoomRepr, prev: &BallotRepr) -> Markup {
     }
 }
 
+/// Renders the ballot submission form.
+///
+/// The `force_submit` variable should be set to allow the user to submit a
+/// ballot that is different to the previously submitted ballot.
+///
+/// TODO: embed Javascript to automatically display scores on the webpage and
+/// warn if the ballot is invalid
 fn render_ballot_form(
     prev: Option<BallotRepr>,
     room: SparRoomRepr,
     error: Option<&str>,
     user: Option<User>,
+    force_submit: bool,
 ) -> Markup {
     let prev = prev.map(|prev| {
         maud::html! {
@@ -263,6 +272,11 @@ fn render_ballot_form(
                     (teams[3])
                 }
             }
+            @if force_submit {
+                input type="checkbox" name="force" hidden checked {}
+            } else {
+                input type="checkbox" name="force" hidden {}
+            }
             button type="submit" class="btn btn-primary" {"Submit"}
         }
     };
@@ -274,22 +288,23 @@ fn render_ballot_form(
     FromForm, Arbitrary, Debug, DefaultMutator, Clone, Serialize, Deserialize,
 )]
 pub struct BpBallotForm {
-    pm: String,
-    pm_score: i64,
-    dpm: String,
-    dpm_score: i64,
-    lo: String,
-    lo_score: i64,
-    dlo: String,
-    dlo_score: i64,
-    mg: String,
-    mg_score: i64,
-    gw: String,
-    gw_score: i64,
-    mo: String,
-    mo_score: i64,
-    ow: String,
-    ow_score: i64,
+    pub pm: String,
+    pub pm_score: i64,
+    pub dpm: String,
+    pub dpm_score: i64,
+    pub lo: String,
+    pub lo_score: i64,
+    pub dlo: String,
+    pub dlo_score: i64,
+    pub mg: String,
+    pub mg_score: i64,
+    pub gw: String,
+    pub gw_score: i64,
+    pub mo: String,
+    pub mo_score: i64,
+    pub ow: String,
+    pub ow_score: i64,
+    pub force: bool,
 }
 
 #[post("/ballots/submit/<key>", data = "<ballot>")]
@@ -307,7 +322,7 @@ pub async fn do_submit_ballot(
                     spar_adjudicator_ballot_links::expires_at
                         .gt(diesel::dsl::now),
                 )
-                .first::<SparAdjudicatorBallotLink>(conn)
+                .first::<AdjudicatorBallotLink>(conn)
                 .optional()?
             {
                 Some(key) => key,
@@ -321,23 +336,6 @@ pub async fn do_submit_ballot(
                     )))
                 }
             };
-
-            let room = SparRoomRepr::of_id(key.room_id, conn)?;
-
-            let previous_ballot_id = adjudicator_ballots::table
-                .filter(adjudicator_ballots::room_id.eq(room.inner.id))
-                .inner_join(spar_adjudicators::table)
-                .filter(spar_adjudicators::member_id.eq(key.member_id))
-                .select(adjudicator_ballots::id)
-                .first::<i64>(conn)
-                .optional()?;
-
-            let previous_ballot =
-                if let Some(previous_ballot_id) = previous_ballot_id {
-                    Some(BallotRepr::of_id(previous_ballot_id, conn)?)
-                } else {
-                    None
-                };
 
             let id_of_speaker_uuid =
                 |uid: &str, conn: &mut SqliteConnection| {
@@ -441,13 +439,130 @@ pub async fn do_submit_ballot(
                 Ok(None)
             })()?;
 
+            let previous_ballot = {
+                let previous_ballot_id = adjudicator_ballots::table
+                    .filter(adjudicator_ballots::room_id.eq(room.inner.id))
+                    .inner_join(spar_adjudicators::table)
+                    .filter(spar_adjudicators::member_id.eq(key.member_id))
+                    .select(adjudicator_ballots::id)
+                    .first::<i64>(conn)
+                    .optional()?;
+                if let Some(previous_ballot_id) = previous_ballot_id {
+                    Some(BallotRepr::of_id(previous_ballot_id, conn)?)
+                } else {
+                    None
+                }
+            };
+
             if let Some(ballot_error) = ballot_error {
                 return Ok(Err(render_ballot_form(
                     previous_ballot,
                     room,
                     Some(ballot_error),
                     user,
+                    false,
                 )));
+            }
+
+            // if this is the first time that the ballot is being submitted, we
+            // check whether it is contrary to ballots submitted by other
+            // in this room
+            if !ballot.force {
+                if let Some(canonical_ballot) =
+                    room.inner.canonical_ballot(conn)?
+                {
+                    let submitted_scoresheet = Scoresheet {
+                        teams: vec![
+                            TeamScoresheet {
+                                speakers: vec![
+                                    SpeakerScoresheet {
+                                        // todo: we have already computed these above
+                                        speaker_id: id_of_speaker_uuid(
+                                            &ballot.pm, conn,
+                                        )?,
+                                        score: ballot.pm_score,
+                                    },
+                                    SpeakerScoresheet {
+                                        // todo: we have already computed these above
+                                        speaker_id: id_of_speaker_uuid(
+                                            &ballot.dpm,
+                                            conn,
+                                        )?,
+                                        score: ballot.dpm_score,
+                                    },
+                                ],
+                            },
+                            TeamScoresheet {
+                                speakers: vec![
+                                    SpeakerScoresheet {
+                                        // todo: we have already computed these above
+                                        speaker_id: id_of_speaker_uuid(
+                                            &ballot.lo, conn,
+                                        )?,
+                                        score: ballot.lo_score,
+                                    },
+                                    SpeakerScoresheet {
+                                        // todo: we have already computed these above
+                                        speaker_id: id_of_speaker_uuid(
+                                            &ballot.dlo,
+                                            conn,
+                                        )?,
+                                        score: ballot.dlo_score,
+                                    },
+                                ],
+                            },
+                            TeamScoresheet {
+                                speakers: vec![
+                                    SpeakerScoresheet {
+                                        // todo: we have already computed these above
+                                        speaker_id: id_of_speaker_uuid(
+                                            &ballot.mg, conn,
+                                        )?,
+                                        score: ballot.mg_score,
+                                    },
+                                    SpeakerScoresheet {
+                                        // todo: we have already computed these above
+                                        speaker_id: id_of_speaker_uuid(
+                                            &ballot.gw, conn,
+                                        )?,
+                                        score: ballot.gw_score,
+                                    },
+                                ],
+                            },
+                            TeamScoresheet {
+                                speakers: vec![
+                                    SpeakerScoresheet {
+                                        // todo: we have already computed these above
+                                        speaker_id: id_of_speaker_uuid(
+                                            &ballot.mo, conn,
+                                        )?,
+                                        score: ballot.mo_score,
+                                    },
+                                    SpeakerScoresheet {
+                                        // todo: we have already computed these above
+                                        speaker_id: id_of_speaker_uuid(
+                                            &ballot.ow, conn,
+                                        )?,
+                                        score: ballot.ow_score,
+                                    },
+                                ],
+                            },
+                        ],
+                    };
+
+                    if submitted_scoresheet != canonical_ballot.scoresheet {
+                        return Ok(Err(render_ballot_form(
+                            previous_ballot,
+                            room,
+                            Some(
+                                "Note: a ballot with a different result has
+                                   already been submitted for this form.",
+                            ),
+                            user,
+                            false,
+                        )));
+                    }
+                }
             }
 
             let adjudicator_id = spar_adjudicators::table
@@ -470,7 +585,7 @@ pub async fn do_submit_ballot(
                 .returning(adjudicator_ballots::id)
                 .get_result::<i64>(conn)?;
 
-            let query = diesel::insert_into(adjudicator_ballot_entries::table)
+            let n = diesel::insert_into(adjudicator_ballot_entries::table)
                 .values(vec![
                     (
                         adjudicator_ballot_entries::public_id
@@ -560,11 +675,9 @@ pub async fn do_submit_ballot(
                         adjudicator_ballot_entries::speak.eq(ballot.ow_score),
                         adjudicator_ballot_entries::position.eq(1),
                     ),
-                ]);
-
-            dbg!(diesel::debug_query::<Sqlite, _>(&query).to_string());
-
-            query.execute(conn)?;
+                ])
+                .execute(conn)?;
+            assert_eq!(n, 8);
 
             // todo: build this page
             return Ok(Ok(Redirect::to("/ballots/submit/thanks")));
@@ -585,7 +698,7 @@ pub async fn view_ballot(
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let ballot = adjudicator_ballots::table
                 .filter(adjudicator_ballots::public_id.eq(&ballot_id))
-                .first::<AdjudicatorBallotSubmission>(conn)
+                .first::<AdjudicatorBallot>(conn)
                 .optional()?;
 
             match ballot {

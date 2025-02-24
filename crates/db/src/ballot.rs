@@ -14,7 +14,7 @@ use crate::{
 #[derive(
     Queryable, Serialize, Debug, Clone, Eq, PartialEq, Hash, Arbitrary,
 )]
-pub struct SparAdjudicatorBallotLink {
+pub struct AdjudicatorBallotLink {
     pub id: i64,
     pub public_id: String,
     pub link: String,
@@ -27,7 +27,7 @@ pub struct SparAdjudicatorBallotLink {
 #[derive(
     Queryable, Serialize, Debug, Clone, Eq, PartialEq, Hash, Arbitrary,
 )]
-pub struct AdjudicatorBallotSubmission {
+pub struct AdjudicatorBallot {
     pub id: i64,
     pub public_id: String,
     pub adjudicator_id: i64,
@@ -46,7 +46,7 @@ pub struct AdjudicatorBallotSubmission {
     Arbitrary,
     Deserialize,
 )]
-pub struct AdjudicatorBallotSubmissionEntry {
+pub struct AdjudicatorBallotEntry {
     pub id: i64,
     pub public_id: String,
     pub ballot_id: i64,
@@ -56,9 +56,11 @@ pub struct AdjudicatorBallotSubmissionEntry {
     pub position: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+/// Note: when comparing ballots you most likely want to compare the
+/// [`Scoresheet`]s rather than this struct.
 pub struct BallotRepr {
-    pub inner: AdjudicatorBallotSubmission,
+    pub inner: AdjudicatorBallot,
     pub scoresheet: Scoresheet,
 }
 
@@ -79,7 +81,7 @@ impl BallotRepr {
     ) -> Result<Self, diesel::result::Error> {
         let ballot = adjudicator_ballots::table
             .filter(adjudicator_ballots::id.eq(id))
-            .first::<AdjudicatorBallotSubmission>(conn)?;
+            .first::<AdjudicatorBallot>(conn)?;
         let teams = spar_teams::table
             .filter(spar_teams::room_id.eq(ballot.room_id))
             .load::<SparRoomTeam>(conn)?
@@ -89,7 +91,7 @@ impl BallotRepr {
 
         let entries = adjudicator_ballot_entries::table
             .filter(adjudicator_ballot_entries::ballot_id.eq(ballot.id))
-            .load::<AdjudicatorBallotSubmissionEntry>(conn)?;
+            .load::<AdjudicatorBallotEntry>(conn)?;
 
         let mut positions = HashMap::new();
         for entry in entries {
@@ -155,17 +157,17 @@ impl BallotRepr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Scoresheet {
     pub teams: Vec<TeamScoresheet>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TeamScoresheet {
     pub speakers: Vec<SpeakerScoresheet>,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct SpeakerScoresheet {
     pub speaker_id: i64,
     pub score: i64,

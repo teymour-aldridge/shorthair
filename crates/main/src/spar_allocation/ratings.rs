@@ -3,7 +3,7 @@
 //! with multi-player teams and multi-team games (such as British Parliamentary
 //! debating).
 //!
-//! Rating players is (rightly) somewhat controversial in debating. However, to
+//! Rating players is (rightly) somewhat frowned upon in debating. However, to
 //! match people in a pro-am pairing we do need some idea of their relative
 //! skill levels. The approach adopted here is to avoid storing the player
 //! strength scores and to never publicize them.
@@ -28,7 +28,7 @@ use skillratings::{
     MultiTeamOutcome,
 };
 
-/// Compute scores denoting the
+/// Compute scores for each player.
 pub fn compute_scores(
     series_id: i64,
     conn: &mut SqliteConnection,
@@ -55,7 +55,11 @@ pub fn compute_scores(
         .collect::<HashMap<_, _>>();
 
     for room in rooms_with_results {
-        let ballot = room.canonical_ballot(conn)?;
+        let ballot = room.canonical_ballot(conn)?.expect(
+            "should not be possible for the result to be missing having
+            retrieved only rooms with a ballot having this in the previous step
+            (are you sure this is running within a transaction?)",
+        );
         let room_repr = room.repr(conn)?;
 
         let teams = &room_repr.teams;

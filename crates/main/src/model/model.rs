@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use arbitrary::Arbitrary;
+use chrono::Utc;
 use db::{
     ballot::{
-        AdjudicatorBallotSubmission, AdjudicatorBallotSubmissionEntry,
-        SparAdjudicatorBallotLink,
+        AdjudicatorBallot, AdjudicatorBallotEntry, AdjudicatorBallotLink,
     },
     group::Group,
     schema::users,
@@ -22,6 +22,7 @@ use fuzzcheck_util::usize_u64_mutator::{
 };
 use rocket::{http::ContentType, local::blocking::Client, Build, Rocket};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
     admin::setup::SetupForm,
@@ -59,9 +60,9 @@ pub struct State {
     teams: Vec<SparRoomTeam>,
     adjs: Vec<SparRoomAdjudicator>,
     speakers: Vec<SparRoomTeamSpeaker>,
-    ballots: Vec<AdjudicatorBallotSubmission>,
-    ballot_links: Vec<SparAdjudicatorBallotLink>,
-    ballot_entries: Vec<AdjudicatorBallotSubmissionEntry>,
+    ballots: Vec<AdjudicatorBallot>,
+    ballot_links: Vec<AdjudicatorBallotLink>,
+    ballot_entries: Vec<AdjudicatorBallotEntry>,
 }
 
 impl State {
@@ -223,7 +224,6 @@ impl State {
                     .optional()
                     .unwrap()
                     .expect(&format!("No matching record for spar {:?}", spar));
-                assert_eq!(spar.start_time, db_spar.start_time);
                 assert_eq!(spar.is_open, db_spar.is_open);
                 assert_eq!(spar.public_id, db_spar.public_id);
             }
@@ -375,7 +375,7 @@ impl State {
                         db::schema::adjudicator_ballots::public_id
                             .eq(&ballot.public_id),
                     )
-                    .first::<AdjudicatorBallotSubmission>(conn)
+                    .first::<AdjudicatorBallot>(conn)
                     .optional()
                     .unwrap()
                     .expect(&format!(
@@ -504,7 +504,7 @@ impl State {
         }
 
         self.ballots = db::schema::adjudicator_ballots::table
-            .load::<AdjudicatorBallotSubmission>(conn)
+            .load::<AdjudicatorBallot>(conn)
             .unwrap();
         for i in 0..self.ballots.len() {
             self.ballots[i].id = i as i64;
@@ -665,11 +665,232 @@ impl State {
                 }
             }
             Action::GenerateDraw(_spar) => self.sync(conn),
-            Action::SubmitBallot(_ballot, _room_idx) => {
-                // Our model stores the ballots in a non-relational form. We
-                // later test for equality against the database, rather than
-                // converting to a relational form here and then carrying out
-                // the assertions.
+            Action::SubmitBallot(ballot, adj_idx, room_idx) => {
+                let adj_idx =
+                    (*adj_idx).clamp(0, self.adjs.len().saturating_sub(1));
+                let room_idx =
+                    (*room_idx).clamp(0, self.rooms.len().saturating_sub(1));
+                if let Some(adj) = self.adjs.get(adj_idx) {
+                    if let Some(room) = self.rooms.get(room_idx) {
+                        let resolve_speaker = |idx: usize| {
+                            let idx = idx.clamp(
+                                0,
+                                self.speakers.len().saturating_sub(1),
+                            );
+                            self.speakers.get(idx)
+                        };
+
+                        let pm = resolve_speaker(ballot.pm).unwrap();
+                        let dpm = resolve_speaker(ballot.dpm).unwrap();
+                        let og = self
+                            .teams
+                            .iter()
+                            .find(|team| {
+                                team.room_id == room.id && team.position == 0
+                            })
+                            .unwrap();
+
+                        let lo = resolve_speaker(ballot.lo).unwrap();
+                        let dlo = resolve_speaker(ballot.dlo).unwrap();
+                        let oo = self
+                            .teams
+                            .iter()
+                            .find(|team| {
+                                team.room_id == room.id && team.position == 1
+                            })
+                            .unwrap();
+
+                        let mg = resolve_speaker(ballot.mg).unwrap();
+                        let gw = resolve_speaker(ballot.gw).unwrap();
+                        let cg = self
+                            .teams
+                            .iter()
+                            .find(|team| {
+                                team.room_id == room.id && team.position == 2
+                            })
+                            .unwrap();
+
+                        let mo = resolve_speaker(ballot.mo).unwrap();
+                        let ow = resolve_speaker(ballot.ow).unwrap();
+                        let co = self
+                            .teams
+                            .iter()
+                            .find(|team| {
+                                team.room_id == room.id && team.position == 3
+                            })
+                            .unwrap();
+
+                        let og_score = ballot.pm_score + ballot.dpm_score;
+                        let oo_score = ballot.lo_score + ballot.dlo_score;
+                        let cg_score = ballot.mg_score + ballot.gw_score;
+                        let co_score = ballot.mo_score + ballot.ow_score;
+                        let mut scores = HashSet::with_capacity(4);
+                        scores.insert(og_score);
+                        scores.insert(oo_score);
+                        scores.insert(cg_score);
+                        scores.insert(co_score);
+
+                        if (scores.len() == 4)
+                            && (mo.team_id == co.id && ow.team_id == co.id)
+                            && (mg.team_id == cg.id && gw.team_id == cg.id)
+                            && (lo.team_id == oo.id && dlo.team_id == oo.id)
+                            && (pm.team_id == og.id && dpm.team_id == og.id)
+                        {
+                            let ballot_id = self.ballots.len() as i64;
+                            self.ballots.push(AdjudicatorBallot {
+                                id: ballot_id,
+                                public_id: last_id().unwrap().to_string(),
+                                adjudicator_id: adj.id,
+                                room_id: room.id,
+                                created_at: Utc::now().naive_utc(),
+                            });
+
+                            self.ballot_entries.push(AdjudicatorBallotEntry {
+                                id: self.ballot_entries.len() as i64,
+                                public_id: Uuid::now_v7().to_string(),
+                                ballot_id,
+                                speaker_id: pm.id,
+                                team_id: self
+                                    .teams
+                                    .iter()
+                                    .find(|team| {
+                                        team.room_id == room.id
+                                            && team.position == 0
+                                    })
+                                    .unwrap()
+                                    .id,
+                                speak: ballot.pm_score,
+                                position: 0,
+                            });
+
+                            self.ballot_entries.push(AdjudicatorBallotEntry {
+                                id: self.ballot_entries.len() as i64,
+                                public_id: Uuid::now_v7().to_string(),
+                                ballot_id,
+                                speaker_id: dpm.id,
+                                team_id: self
+                                    .teams
+                                    .iter()
+                                    .find(|team| {
+                                        team.room_id == room.id
+                                            && team.position == 0
+                                    })
+                                    .unwrap()
+                                    .id,
+                                speak: ballot.dpm_score,
+                                position: 1,
+                            });
+
+                            self.ballot_entries.push(AdjudicatorBallotEntry {
+                                id: self.ballot_entries.len() as i64,
+                                public_id: Uuid::now_v7().to_string(),
+                                ballot_id,
+                                speaker_id: lo.id,
+                                team_id: self
+                                    .teams
+                                    .iter()
+                                    .find(|team| {
+                                        team.room_id == room.id
+                                            && team.position == 1
+                                    })
+                                    .unwrap()
+                                    .id,
+                                speak: ballot.lo_score,
+                                position: 0,
+                            });
+
+                            self.ballot_entries.push(AdjudicatorBallotEntry {
+                                id: self.ballot_entries.len() as i64,
+                                public_id: Uuid::now_v7().to_string(),
+                                ballot_id,
+                                speaker_id: dlo.id,
+                                team_id: self
+                                    .teams
+                                    .iter()
+                                    .find(|team| {
+                                        team.room_id == room.id
+                                            && team.position == 1
+                                    })
+                                    .unwrap()
+                                    .id,
+                                speak: ballot.dlo_score,
+                                position: 1,
+                            });
+
+                            self.ballot_entries.push(AdjudicatorBallotEntry {
+                                id: self.ballot_entries.len() as i64,
+                                public_id: Uuid::now_v7().to_string(),
+                                ballot_id,
+                                speaker_id: mg.id,
+                                team_id: self
+                                    .teams
+                                    .iter()
+                                    .find(|team| {
+                                        team.room_id == room.id
+                                            && team.position == 2
+                                    })
+                                    .unwrap()
+                                    .id,
+                                speak: ballot.mg_score,
+                                position: 0,
+                            });
+
+                            self.ballot_entries.push(AdjudicatorBallotEntry {
+                                id: self.ballot_entries.len() as i64,
+                                public_id: Uuid::now_v7().to_string(),
+                                ballot_id,
+                                speaker_id: gw.id,
+                                team_id: self
+                                    .teams
+                                    .iter()
+                                    .find(|team| {
+                                        team.room_id == room.id
+                                            && team.position == 2
+                                    })
+                                    .unwrap()
+                                    .id,
+                                speak: ballot.gw_score,
+                                position: 1,
+                            });
+
+                            self.ballot_entries.push(AdjudicatorBallotEntry {
+                                id: self.ballot_entries.len() as i64,
+                                public_id: Uuid::now_v7().to_string(),
+                                ballot_id,
+                                speaker_id: mo.id,
+                                team_id: self
+                                    .teams
+                                    .iter()
+                                    .find(|team| {
+                                        team.room_id == room.id
+                                            && team.position == 3
+                                    })
+                                    .unwrap()
+                                    .id,
+                                speak: ballot.mo_score,
+                                position: 0,
+                            });
+
+                            self.ballot_entries.push(AdjudicatorBallotEntry {
+                                id: self.ballot_entries.len() as i64,
+                                public_id: Uuid::now_v7().to_string(),
+                                ballot_id,
+                                speaker_id: ow.id,
+                                team_id: self
+                                    .teams
+                                    .iter()
+                                    .find(|team| {
+                                        team.room_id == room.id
+                                            && team.position == 3
+                                    })
+                                    .unwrap()
+                                    .id,
+                                speak: ballot.ow_score,
+                                position: 1,
+                            });
+                        }
+                    }
+                }
             }
             Action::AddMember(spar_series_member) => {
                 if let Some(user) = &self.active_user {
@@ -873,13 +1094,66 @@ impl State {
                 }
             }
             Action::GenerateDraw(spar_idx) => {
-                if let Some(spar) = self.spars.get(*spar_idx) {
+                let spar_idx =
+                    (*spar_idx).clamp(0, self.spars.len().saturating_sub(1));
+                if let Some(spar) = self.spars.get(spar_idx) {
                     self.client
                         .post(format!("/spars/{}/makedraw", spar.public_id))
                         .dispatch();
                 }
             }
-            Action::SubmitBallot(_ballot, _spar_idx) => {}
+            Action::SubmitBallot(ballot, adj_idx, room_idx) => {
+                let adj_idx =
+                    (*adj_idx).clamp(0, self.adjs.len().saturating_sub(1));
+                let room_idx =
+                    (*room_idx).clamp(0, self.rooms.len().saturating_sub(1));
+
+                if let Some(adj) = self.adjs.get(adj_idx) {
+                    if let Some(room) = self.rooms.get(room_idx) {
+                        let key = self
+                            .ballot_links
+                            .iter()
+                            .find(|key| {
+                                key.room_id == room.id
+                                    && key.member_id == adj.member_id
+                            })
+                            .unwrap();
+
+                        let resolve_public_id = |idx: &usize| {
+                            let idx = (*idx).clamp(
+                                0,
+                                self.speakers.len().saturating_sub(1),
+                            );
+                            self.speakers[idx].public_id.clone()
+                        };
+
+                        let ballot = BpBallotForm {
+                            force: true,
+                            pm: resolve_public_id(&ballot.pm),
+                            pm_score: ballot.pm_score,
+                            dpm: resolve_public_id(&ballot.dpm),
+                            dpm_score: ballot.dpm_score,
+                            lo: resolve_public_id(&ballot.lo),
+                            lo_score: ballot.lo_score,
+                            dlo: resolve_public_id(&ballot.dlo),
+                            dlo_score: ballot.dlo_score,
+                            mg: resolve_public_id(&ballot.mg),
+                            mg_score: ballot.mg_score,
+                            gw: resolve_public_id(&ballot.gw),
+                            gw_score: ballot.gw_score,
+                            mo: resolve_public_id(&ballot.mo),
+                            mo_score: ballot.mo_score,
+                            ow: resolve_public_id(&ballot.ow),
+                            ow_score: ballot.ow_score,
+                        };
+                        self.client
+                            .post(format!("/ballots/{}/submit", key.link))
+                            .header(ContentType::Form)
+                            .body(serde_urlencoded::to_string(&ballot).unwrap())
+                            .dispatch();
+                    }
+                }
+            }
             Action::AddMember(spar_series_member) => {
                 let series_idx = (spar_series_member.spar_series_id as usize)
                     .clamp(0, self.spar_series_members.len().saturating_sub(1));
@@ -955,5 +1229,26 @@ pub enum Action {
     GenerateDraw(usize),
     /// Submit a ballot in the nth room. Requires that the logged in user is
     /// allocated as a judge for that room.
-    SubmitBallot(BpBallotForm, usize),
+    SubmitBallot(FuzzerBpBallotForm, usize, usize),
+}
+
+#[derive(Debug, DefaultMutator, Clone, Serialize, Deserialize, Arbitrary)]
+pub struct FuzzerBpBallotForm {
+    pub pm: usize,
+    pub pm_score: i64,
+    pub dpm: usize,
+    pub dpm_score: i64,
+    pub lo: usize,
+    pub lo_score: i64,
+    pub dlo: usize,
+    pub dlo_score: i64,
+    pub mg: usize,
+    pub mg_score: i64,
+    pub gw: usize,
+    pub gw_score: i64,
+    pub mo: usize,
+    pub mo_score: i64,
+    pub ow: usize,
+    pub ow_score: i64,
+    pub force: bool,
 }

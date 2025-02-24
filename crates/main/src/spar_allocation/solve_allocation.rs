@@ -1,26 +1,5 @@
-//! Generates a draw by formulating the problem as an ILP, and then using a
-//! solver to resolve this.
-//!
-//! In our problem, we have variables
-//!     x_{i, r, j} := is person i assigned to role j in room r
-//!     r           := a room in {1, ..., R_max} where R_{max} is the maximum
-//!                    number of rooms we might need
-//!     u_r         := denotes whether room r is used or not
-//!
-//! All solutions need to satisfy the constraints (todo: update this - I fixed
-//! some problems with the constraints during the implementation)
-//!     x_{i, r, j}               <= u_r for all r
-//!     sum_{i} [x_{i, j, r}]     <= 2 * u_r for all rooms r
-//!                                          and all team roles j
-//!     sum_{i} [x_{i, JUDGE, r}] >= u_r     for all rooms r
-//!     sum_{i} [x_{i, JUDGE, r}] <= n * u_r for all rooms r
-//!     u_r <= sum_{i} [x_{i, JUDGE, r}]
-//!
-//!
-//! Then we seek to reduce the number of rooms we use
-//! - sum_{r} u_r
-//!
-//! as well as the ELO difference between rooms
+//! Generates a draw by formulating the problem as an ILP, and then solves
+//! this.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -44,7 +23,8 @@ pub fn solve_lp(
     let r_max = person_and_signup_data
         .iter()
         .filter(|(_id, signup)| signup.as_speaker)
-        .count();
+        .count()
+        .div_ceil(8);
 
     let mut vars = variables!();
 
@@ -54,6 +34,7 @@ pub fn solve_lp(
     let (x_irj, u_r) = {
         let mut x_irj = HashMap::new();
         let mut u_r = HashMap::new();
+        // set up variables
         for (participant_id, _) in person_and_signup_data.iter() {
             for room_idx in 0..r_max {
                 // create u_r
@@ -84,6 +65,7 @@ pub fn solve_lp(
         (x_irj, u_r)
     };
 
+    // gather constraints
     let mut constraints = Vec::new();
 
     let () = {
@@ -112,6 +94,15 @@ pub fn solve_lp(
                 }
             }
 
+            // println!(
+            //     "Number of variables for judge/speaker constraints: {}",
+            //     vars.len()
+            // );
+            // println!(
+            //     "Number of constraints for judge/speaker constraints: {}",
+            //     constraints.len()
+            // );
+
             // add constraint requiring each user to be allocated in exactly one
             // position (we set sum [positions allocated] >= 1
             //                  AND sum [positions_allocated] <= 1)
@@ -126,7 +117,17 @@ pub fn solve_lp(
             });
             constraints.push(constraint! {
                 positions_allocated <= 1
-            })
+            });
+
+            // todo: add these via tracing
+            // println!(
+            //     "Number of variables for position constraints: {}",
+            //     vars.len()
+            // );
+            // println!(
+            //     "Number of constraints for position constraints: {}",
+            //     constraints.len()
+            // );
         }
     };
 
@@ -163,22 +164,27 @@ pub fn solve_lp(
 
             constraints.push(constraint!(co_count.clone() <= 2 * u_r[&room]));
             constraints.push(constraint!(co_count.clone() >= u_r[&room]));
+
+            // todo: add these statements via tracing
+            // println!(
+            //     "Number of variables for room constraints: {}",
+            //     vars.len()
+            // );
+            // println!(
+            //     "Number of constraints for room constraints: {}",
+            //     constraints.len()
+            // );
         }
     };
 
-    // minimise difference between teams
-    let difference_between_teams_objective = {
-        // ELO score of each team
-        //
-        // this is in the form (room_idx, role)
+    let score_per_team = {
         let mut score_per_team = HashMap::new();
 
-        let mut difference_between_teams_objective = Expression::default();
-        // here we compute the average speaker score of each team
         for room_idx in 0..r_max {
             for role in 0..=3 {
                 // efficiency... what does this word "efficiency" mean?
-                let elo_of_team_speakers = x_irj
+
+                let rating_of_speakers = x_irj
                     .iter()
                     .filter(
                         |(
@@ -195,24 +201,40 @@ pub fn solve_lp(
                     )
                     .map(|((i, _j, _r), lp_variable)| {
                         let score: Expression = (*lp_variable)
-                            * (*elo_scores.get(i).unwrap_or(&1500.0));
+                            // todo: assert that we never pick unwrap
+                            * (*elo_scores.get(i).unwrap_or(&25.0));
                         score
                     })
                     .collect::<Vec<_>>();
 
-                score_per_team.insert(
-                    (room_idx, role),
-                    elo_of_team_speakers
-                        .iter()
-                        .map(|exp| exp.clone() / 2)
-                        .sum::<Expression>(),
-                );
+                score_per_team.insert((room_idx, role), rating_of_speakers);
             }
+        }
 
-            for r1 in 0..=3 {
-                for r2 in (r1 + 1)..=3 {
-                    let team_1 = score_per_team[&(room_idx, r1)].clone();
-                    let team_2 = score_per_team[&(room_idx, r2)].clone();
+        score_per_team
+    };
+
+    // minimise difference between teams
+    let difference_between_teams = {
+        // ELO score of each team
+        //
+        // this is in the form (room_idx, role)
+
+        let mut difference_between_teams = Expression::default();
+        // here we compute the average speaker score of each team
+        for room_idx in 0..r_max {
+            for team_1_pos in 0..=3 {
+                for team_2_pos in (team_1_pos + 1)..=3 {
+                    let team_1 = score_per_team[&(room_idx, team_1_pos)]
+                        .clone()
+                        .iter()
+                        .map(|exp| exp.clone())
+                        .sum::<Expression>();
+                    let team_2 = score_per_team[&(room_idx, team_2_pos)]
+                        .clone()
+                        .iter()
+                        .map(|exp| exp.clone())
+                        .sum::<Expression>();
 
                     // See this for an explanation:
                     // https://math.stackexchange.com/questions/1954992
@@ -227,17 +249,71 @@ pub fn solve_lp(
                     constraints.push(constraint!(
                         absolute_value_of_difference >= diff_neg
                     ));
-                    difference_between_teams_objective +=
-                        absolute_value_of_difference;
+                    difference_between_teams += absolute_value_of_difference;
                 }
             }
         }
 
-        difference_between_teams_objective
+        difference_between_teams
     };
 
-    // todo: maximise the difference between speakers on a team
-    let difference_between_speakers_objective = { 0.0 };
+    // println!(
+    //     "Number of variables after difference between teams: {}",
+    //     vars.len()
+    // );
+    // println!(
+    //     "Number of constraints after difference between teams: {}",
+    //     constraints.len()
+    // );
+
+    let difference_between_speakers = {
+        let max_rating_of_all_speakers =
+            elo_scores.values().max_by(|a, b| a.total_cmp(b)).unwrap();
+        let min_rating_of_all_speakers =
+            elo_scores.values().min_by(|a, b| a.total_cmp(b)).unwrap();
+
+        let mut difference_between_speakers = Expression::default();
+
+        for room_idx in 0..r_max {
+            for team in 0..=3 {
+                let max_rating_on_team = vars.add(VariableDefinition::new());
+                let min_rating_on_team = vars.add(VariableDefinition::new());
+
+                constraints.push(constraint!(
+                    max_rating_on_team <= (*max_rating_of_all_speakers + 100.0)
+                ));
+                constraints.push(constraint!(
+                    (*min_rating_of_all_speakers - 100.0) <= min_rating_on_team
+                ));
+
+                for participant in person_and_signup_data.keys() {
+                    let score: Expression = x_irj
+                        .get(&(participant, room_idx, team))
+                        .unwrap()
+                        .clone()
+                        * elo_scores.get(participant).unwrap().clone();
+                    constraints
+                        .push(constraint!(score.clone() <= max_rating_on_team));
+                    constraints
+                        .push(constraint!(min_rating_on_team <= score.clone()));
+                }
+
+                difference_between_speakers +=
+                    max_rating_on_team - min_rating_on_team;
+            }
+        }
+
+        difference_between_speakers
+    };
+
+    // println!(
+    //     "Number of variables after difference between speakers: {}",
+    //     vars.len()
+    // );
+    // println!(
+    //     "Number of constraints after difference between speakers: {}",
+    //     constraints.len()
+    // );
 
     // we want fewer rooms (where possible)
     let fewer_rooms_objective = {
@@ -252,11 +328,15 @@ pub fn solve_lp(
 
     // todo: difference between speakers on the same team
 
+    // println!("Number of variables for problem: {}", vars.len());
+    // println!("Number of constraints for problem: {}", constraints.len());
+
     let mut problem = vars
-        .minimise(
-            difference_between_teams_objective
-                + /* todo: multiplier here */ difference_between_speakers_objective
-                + /* todo: multiplier here */ fewer_rooms_objective,
+        .maximise(
+            (-1 * difference_between_teams)
+            /* todo: multiplier here */
+            +  1 * (difference_between_speakers)
+            + /* todo: multiplier here */ (-1 * fewer_rooms_objective),
         )
         .using(good_lp::solvers::scip::scip);
 
@@ -320,10 +400,12 @@ pub enum Team {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+/// An assignment of a [`db::spar::SparSeriesMember`] - the position in the
+/// debate they have been allocated.
 pub enum Assignment {
-    // allocate to the given team in the given room
+    /// Denotes that the person is allocated to the given room and team.
     Team { room: usize, team: Team },
-    // put on a panel in the nth room
+    /// Denotes that the person is allocated as a judge in the given room.
     Judge(usize),
 }
 
@@ -416,6 +498,7 @@ mod test_allocations {
     };
 
     use db::spar::SparSignup;
+    use itertools::Itertools;
 
     use crate::spar_allocation::solve_allocation::solve_lp;
 
@@ -521,7 +604,8 @@ mod test_allocations {
 
         assert_solution_valid(opt.clone());
 
-        assert_eq!(rooms_of_speaker_assignments(&opt).len(), 2);
+        let rooms = rooms_of_speaker_assignments(&opt);
+        assert_eq!(rooms.len(), 2, "error: {rooms:#?} \n opt: {opt:?}");
     }
 
     #[test]
@@ -556,7 +640,9 @@ mod test_allocations {
 
     #[test]
     fn lots_of_rooms() {
-        let participants = Arc::new(generate_participants(10 * 3, 10 * 8, 0));
+        let n_rooms = 20;
+        let participants =
+            Arc::new(generate_participants(n_rooms * 3, n_rooms * 8, 0));
         let elo_scores = participants
             .iter()
             .map(|(member_id, _signup)| (*member_id, 25.0))
@@ -566,7 +652,43 @@ mod test_allocations {
 
         assert_solution_valid(opt.clone());
 
-        assert_eq!(rooms_of_speaker_assignments(&opt).len(), 10);
+        let rooms = rooms_of_speaker_assignments(&opt);
+
+        assert_eq!(rooms.len(), n_rooms, "error: {rooms:?}, opt: {opt:?}");
+    }
+
+    #[test]
+    fn pro_am_pairings() {
+        let participants = Arc::new(generate_participants(1 * 3, 1 * 8, 0));
+        let elo_scores = participants
+            .iter()
+            .sorted_by_key(|(id, _)| *id)
+            .map(|(member_id, _signup)| {
+                (*member_id, 25.0 * (*member_id as f64))
+            })
+            .collect::<HashMap<_, _>>();
+
+        let opt = solve_lp(participants, elo_scores);
+
+        assert_solution_valid(opt.clone());
+
+        let rooms = rooms_of_speaker_assignments(&opt);
+
+        assert_eq!(rooms.len(), 1);
+        let weakest_plus_strongest = {
+            let mut t = HashSet::new();
+            t.insert(3);
+            t.insert(10);
+            t
+        };
+        let room = rooms.values().next().unwrap().clone();
+        let matched_weakest_and_strongest = room.teams.values().any(|team| {
+            team.intersection(&weakest_plus_strongest)
+                .collect::<HashSet<_>>()
+                .len()
+                == 2
+        });
+        assert!(matched_weakest_and_strongest, "failed: room {room:#?}")
     }
 
     fn assert_solution_valid(opt: HashMap<i64, Assignment>) {

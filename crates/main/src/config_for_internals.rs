@@ -16,7 +16,6 @@ use rocket::{
     response::{status::Unauthorized, Redirect},
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{
     html::{error_403, page_of_body},
@@ -196,7 +195,7 @@ pub async fn do_make_session(
 
                 let public_id = insert_into(spars::table)
                     .values((
-                        spars::public_id.eq(Uuid::now_v7().to_string()),
+                        spars::public_id.eq(gen_uuid().to_string()),
                         spars::spar_series_id.eq(spar_series.id),
                         spars::created_at.eq(Utc::now().naive_utc()),
                         spars::is_open.eq(form.is_open.is_some()),

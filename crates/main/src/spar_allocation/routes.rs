@@ -2,9 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use chrono::{TimeDelta, Utc};
 use db::{
-    ballot::{
-        AdjudicatorBallotSubmission, BallotRepr, SparAdjudicatorBallotLink,
-    },
+    ballot::{AdjudicatorBallot, AdjudicatorBallotLink, BallotRepr},
     group::Group,
     room::SparRoomRepr,
     schema::{
@@ -556,7 +554,7 @@ fn ballots_of_rooms(
     for room in rooms {
         let ballots = adjudicator_ballots::table
             .filter(adjudicator_ballots::room_id.eq(room.inner.id))
-            .load::<AdjudicatorBallotSubmission>(conn)?;
+            .load::<AdjudicatorBallot>(conn)?;
         for ballot in ballots {
             ret.insert(
                 ballot.adjudicator_id,
@@ -697,7 +695,7 @@ pub async fn do_release_draw(
                     spar_adjudicator_ballot_links::all_columns,
                     spar_series_members::all_columns,
                 ))
-                .load::<(SparAdjudicatorBallotLink, SparSeriesMember)>(conn)?;
+                .load::<(AdjudicatorBallotLink, SparSeriesMember)>(conn)?;
 
             for (adj_link, member) in adjudicators {
                 let ballot_link = format!("https://spar.swissdebating.org/ballots/submit/{}", adj_link.link);

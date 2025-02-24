@@ -131,6 +131,64 @@ mod regressions {
     }
 
     #[test]
+    pub fn reg_4() {
+        let runner = make_test_runner();
+        (runner)(
+            &serde_json::from_str(
+                r#"
+                [
+                  {
+                    "Setup": {
+                      "id": 7456426718206932077,
+                      "public_id": "",
+                      "username": "personI",
+                      "email": "user@example.com",
+                      "email_verified": false,
+                      "password_hash": "person7",
+                      "created_at": "1959-11-16T12:09:11",
+                      "is_superuser": true
+                    }
+                  },
+                  { "Login": 22 },
+                  {
+                    "CreateGroup": {
+                      "id": -1275130027378103291,
+                      "public_id": "�",
+                      "name": "person208",
+                      "website": null,
+                      "created_at": "2014-04-06T13:47:39"
+                    }
+                  },
+                  {
+                    "CreateSparSeries": {
+                      "id": -7319772347446247088,
+                      "public_id": "*y\u000f_S���F�@�f'�p",
+                      "title": ")LmlKB",
+                      "description": null,
+                      "speakers_per_team": 8971086411835473157,
+                      "group_id": 618065765806848772,
+                      "created_at": "1931-10-06T09:32:12"
+                    }
+                  },
+                  {
+                    "CreateSpar": {
+                      "id": -6150881746904209018,
+                      "public_id": "",
+                      "start_time": "2026-06-01T05:17:01",
+                      "is_open": false,
+                      "release_draw": false,
+                      "spar_series_id": 1330336505694704986,
+                      "created_at": "2003-04-12T10:45:19"
+                    }
+                  }
+                ]
+                "#,
+            )
+            .unwrap(),
+        )
+    }
+
+    #[test]
     pub fn reg_5() {
         let runner = make_test_runner();
         (runner)(&serde_json::from_str(r#"
@@ -371,6 +429,41 @@ mod regressions {
                       "name": "I6q\\Mr4($J5",
                       "website": null,
                       "created_at": "2035-08-12T09:20:42"
+                    }
+                  }
+                ]
+                "#,
+            )
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    pub fn reg_15() {
+        let runner = make_test_runner();
+        (runner)(
+            &serde_json::from_str(
+                r#"
+                [
+                  {
+                    "Setup": {
+                      "id": -2262268559300272614,
+                      "public_id": "",
+                      "username": "IOPA",
+                      "email": "user@example.com",
+                      "email_verified": false,
+                      "password_hash": "Person Lastname5",
+                      "created_at": "1938-02-21T22:31:11",
+                      "is_superuser": true
+                    }
+                  },
+                  {
+                    "CreateGroup": {
+                      "id": 6486003193559178599,
+                      "public_id": "",
+                      "name": "K@E.GMWP",
+                      "website": "",
+                      "created_at": "1973-08-03T06:48:53"
                     }
                   }
                 ]

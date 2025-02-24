@@ -51,13 +51,17 @@ impl SparRoom {
     pub fn canonical_ballot(
         &self,
         conn: &mut SqliteConnection,
-    ) -> Result<BallotRepr, diesel::result::Error> {
+    ) -> Result<Option<BallotRepr>, diesel::result::Error> {
         let id = adjudicator_ballots::table
             .filter(adjudicator_ballots::room_id.eq(self.id))
             .order_by(adjudicator_ballots::created_at)
             .select(adjudicator_ballots::id)
-            .first::<i64>(conn)?;
-        BallotRepr::of_id(id, conn)
+            .first::<i64>(conn)
+            .optional()?;
+        match id {
+            Some(id) => Ok(Some(BallotRepr::of_id(id, conn)?)),
+            None => Ok(None),
+        }
     }
 }
 
