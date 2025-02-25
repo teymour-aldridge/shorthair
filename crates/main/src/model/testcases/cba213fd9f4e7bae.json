@@ -1,0 +1,35 @@
+[
+  {
+    "Setup": {
+      "id": 2122065993031368871,
+      "public_id": "",
+      "username": "rsoy",
+      "email": "ser@example.com",
+      "email_verified": false,
+      "password_hash": "JK<3DDm/XA$\"HO[cl&rJ|u'Mdm]8kDCZ[6QG|lbs@*GbxnKS\":'F.1[hE*SBK;S&Oeghp!mj\\%Kt98tkwXvLsLQN4p:}~Zr>jWh$Hg=t=96RNCBX7T79ZpDm%[:`Wnnxt'$ks}JRkbI*r|@U6ecFxN_Lj5cx`P,,YCUYMs{B2yiX5o(,]}XS**l}E0*i\\=TcTf)KeyF~klVW<]oe]V3Y<]%lzQt#)&X\\j)aX6!e;{n)]w!-|yv+{4e_g`lacRcC>rOOPFG(wJ!rKoqg?||8H?",
+      "created_at": "1924-01-02T09:28:41",
+      "is_superuser": true
+    }
+  },
+  { "GenerateDraw": 16607821193324214670 },
+  { "Login": 767 },
+  {
+    "CreateGroup": {
+      "id": 5889190920456457548,
+      "public_id": "�=�s\f�&z�������\u0005��\u000e�\tQ@��0",
+      "name": "person5",
+      "website": null,
+      "created_at": "1966-04-08T16:08:43"
+    }
+  },
+  {
+    "CreateGroup": {
+      "id": -1162067236625638486,
+      "public_id": "4)�\u0010�\b�?��Cb��e�\u000f�\n�$��y�ZT�����5V��g\u0007�H�A\u0000������\u000e�B�SWT��,�\n`��hR������\u0016�m8\u0002",
+      "name": "8@20.BM",
+      "website": null,
+      "created_at": "2036-02-11T19:35:50"
+    }
+  },
+  { "GenerateDraw": 16607821193324214670 }
+]

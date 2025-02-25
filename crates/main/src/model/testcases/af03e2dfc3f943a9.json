@@ -1,0 +1,46 @@
+[
+  {
+    "Setup": {
+      "id": -2914484095600867541,
+      "public_id": "",
+      "username": "WeeeW",
+      "email": "user@example.com",
+      "email_verified": true,
+      "password_hash": "?umv36^j>CYK=gU-+\\5ZO?@^V!m.HP(}ld}TfI}u^ej|D(Z,Q2].$!ry.9[SKjab9`N>SU&AWk;V;n(g0<QCx/phY<J#/W{o2VG&IUKbmg.o`ne)!ii|[G>G|*D*uAw{j.'=)z06n~&d[7[pKX[ak]$,,j#Z>Hb/*A(^I`7;-uU<o]VJw{F?h4,5F{v2@v\"\"[#.`OGq+9t9b9DEs6(2NE7B'|s-8z-;!8fz-=}`U@~]Zq'sJ(0,X'C3FTkecxjO+Pmky<(Jz7Trn)BN2[^U8\"gS&'l/Eoz TL\\jg{WjUI@@\"jG##R*}5Rdl4%^IF)NN%3>?5DU]I",
+      "created_at": "2015-10-08T00:35:34",
+      "is_superuser": false
+    }
+  },
+  { "Login": 499 },
+  {
+    "CreateGroup": {
+      "id": -2261890891507957593,
+      "public_id": "ı����D\u001c\t}F�",
+      "name": "user@example.com",
+      "website": null,
+      "created_at": "2009-01-31T01:51:36"
+    }
+  },
+  {
+    "CreateSparSeries": {
+      "id": 918548066915435583,
+      "public_id": "\u001a���U",
+      "title": "user@example.com",
+      "description": "5@Q.ZZ",
+      "speakers_per_team": -7319556923175156392,
+      "group_id": 5542725359213988262,
+      "created_at": "2026-11-18T03:15:39"
+    }
+  },
+  { "GenerateDraw": 2468388773286450622 },
+  {
+    "AddMember": {
+      "id": -85372720590067956,
+      "public_id": "z'(��͖�\u001b\u001f]�V�L%^:f�~�\u000e�1'���,�\u0013�-�f�ʠB",
+      "name": "JXH@9TWYQ4H.XO",
+      "email": "R@Y.KY",
+      "spar_series_id": -1354131919664046205,
+      "created_at": "1915-01-11T07:04:08"
+    }
+  }
+]

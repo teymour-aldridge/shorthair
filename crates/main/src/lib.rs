@@ -2,9 +2,12 @@
 
 use account::account_page;
 use admin::setup::{do_setup, setup_page};
-use auth::login::{
-    check_email_page, confirm_login_with_code, do_login, do_login_with_code,
-    do_password_login, login_page, login_with_password,
+use auth::{
+    login::{
+        check_email_page, confirm_login_with_code, do_login,
+        do_login_with_code, do_password_login, login_page, login_with_password,
+    },
+    logout,
 };
 use ballots::{do_submit_ballot, submit_ballot_page, view_ballot};
 use config_for_internals::{
@@ -148,7 +151,8 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 account_page,
                 view_ballot,
                 results_of_spar_series_page,
-                results_of_spar_page
+                results_of_spar_page,
+                logout::logout
             ],
         )
 }

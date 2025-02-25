@@ -359,6 +359,7 @@ pub async fn do_add_member(
 
             assert_eq!(n, 1);
 
+
             let markup = html! {
                 h1 { "Member added successfully" }
                 p { "Added " (form.name) " to the spar series." }

@@ -6,7 +6,7 @@ use db::{
     ballot::{
         AdjudicatorBallot, AdjudicatorBallotEntry, AdjudicatorBallotLink,
     },
-    group::Group,
+    group::{Group, GroupMember},
     schema::users,
     spar::{
         Spar, SparRoom, SparRoomAdjudicator, SparRoomTeam, SparRoomTeamSpeaker,
@@ -47,7 +47,7 @@ pub struct GroupMembershipData {
 /// it represents.
 #[derive(Debug)]
 pub struct State {
-    client: rocket::local::blocking::Client,
+    pub client: rocket::local::blocking::Client,
     users: Vec<User>,
     groups: Vec<Group>,
     group_members: HashMap<(usize, Group), GroupMembershipData>,
@@ -91,9 +91,14 @@ impl State {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             diesel::delete(db::schema::adjudicator_ballots::table)
                 .execute(conn)?;
+            diesel::delete(db::schema::adjudicator_ballot_entries::table)
+                .execute(conn)?;
+            diesel::delete(db::schema::spar_adjudicator_ballot_links::table)
+                .execute(conn)?;
             diesel::delete(db::schema::spar_speakers::table).execute(conn)?;
             diesel::delete(db::schema::spar_adjudicators::table)
                 .execute(conn)?;
+            diesel::delete(db::schema::spar_speakers::table).execute(conn)?;
             diesel::delete(db::schema::spar_teams::table).execute(conn)?;
             diesel::delete(db::schema::spar_rooms::table).execute(conn)?;
             diesel::delete(db::schema::spar_signups::table).execute(conn)?;
@@ -398,6 +403,13 @@ impl State {
     /// We do this mostly for the spar draw generation functionality, as this is
     /// not tested by the model (it is has some manual tests).
     fn sync(&mut self, conn: &mut SqliteConnection) {
+        let active_user =
+            self.active_user.as_ref().map(|user| user.public_id.clone());
+        let user_passwords = self
+            .users
+            .iter()
+            .map(|user| (user.public_id.clone(), user.password_hash.clone()))
+            .collect::<HashMap<_, _>>();
         self.reset();
         let mut user_id_map = HashMap::new();
         let mut group_id_map = HashMap::new();
@@ -413,12 +425,42 @@ impl State {
         for i in 0..self.users.len() {
             user_id_map.insert(self.users[i].id, i);
             self.users[i].id = i as i64;
+            self.users[i].password_hash = user_passwords
+                .get(&self.users[i].public_id)
+                .unwrap()
+                .clone();
+        }
+
+        if let Some(public_id) = active_user {
+            self.active_user = Some(
+                self.users
+                    .iter()
+                    .find(|user| user.public_id == public_id)
+                    .cloned()
+                    .unwrap(),
+            );
         }
 
         self.groups = db::schema::groups::table.load::<Group>(conn).unwrap();
         for i in 0..self.groups.len() {
             group_id_map.insert(self.groups[i].id, i);
             self.groups[i].id = i as i64;
+        }
+
+        let group_members = db::schema::group_members::table
+            .load::<GroupMember>(conn)
+            .unwrap();
+        for member in group_members {
+            let user_id = user_id_map[&member.user_id];
+            let user = self.users[user_id].clone();
+            let group_id = group_id_map[&member.group_id];
+            self.group_members.insert(
+                (user.id as usize, self.groups[group_id].clone()),
+                GroupMembershipData {
+                    is_admin: member.is_admin,
+                    is_superuser: member.has_signing_power_bool,
+                },
+            );
         }
 
         self.spar_series = db::schema::spar_series::table
@@ -626,6 +668,7 @@ impl State {
                                     let spar_id = self.spars.len();
                                     let mut spar = spar.clone();
                                     spar.id = spar_id as i64;
+                                    spar.spar_series_id = spar_series.id;
                                     spar.public_id =
                                         last_id().unwrap().to_string();
                                     self.spars.push(spar);
@@ -908,6 +951,7 @@ impl State {
                         {
                             if membership.is_admin || membership.is_superuser {
                                 let mut member = spar_series_member.clone();
+                                member.spar_series_id = spar_series.id;
                                 member.id =
                                     self.spar_series_members.len() as i64;
                                 member.public_id =

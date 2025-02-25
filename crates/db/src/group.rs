@@ -62,11 +62,11 @@ fn test_group_validate() {
 
 #[derive(Debug, Queryable, Serialize, Arbitrary)]
 pub struct GroupMember {
-    rowid: i64,
-    user_id: i64,
-    institution_id: i64,
-    has_signing_power_bool: bool,
-    is_admin: bool,
+    pub id: i64,
+    pub group_id: i64,
+    pub user_id: i64,
+    pub has_signing_power_bool: bool,
+    pub is_admin: bool,
 }
 
 impl GroupMember {
