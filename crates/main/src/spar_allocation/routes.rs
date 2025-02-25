@@ -659,7 +659,7 @@ pub async fn do_release_draw(
 
             let user_has_permission = select(exists(
                 spar_series::table
-                    .filter(spar_series::id.eq(spar.id))
+                    .filter(spar_series::id.eq(spar.spar_series_id))
                     .inner_join(groups::table.inner_join(group_members::table))
                     .filter(group_members::user_id.eq(user.id))
                     .filter(

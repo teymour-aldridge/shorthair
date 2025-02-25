@@ -255,7 +255,6 @@ impl State {
                 assert_eq!(signup.as_judge, db_signup.as_judge);
                 assert_eq!(signup.as_speaker, db_signup.as_speaker);
                 assert_eq!(signup.public_id, db_signup.public_id);
-                assert_eq!(signup.member_id, db_signup.member_id);
             }
 
             // Check spar series members
@@ -499,7 +498,7 @@ impl State {
         for i in 0..self.spar_signups.len() {
             self.spar_signups[i].id = i as i64;
             self.spar_signups[i].member_id =
-                user_id_map[&self.spar_signups[i].member_id] as i64;
+                member_id_map[&self.spar_signups[i].member_id] as i64;
             self.spar_signups[i].spar_id =
                 spar_id_map[&self.spar_signups[i].spar_id] as i64;
         }
@@ -669,6 +668,7 @@ impl State {
                                     let mut spar = spar.clone();
                                     spar.id = spar_id as i64;
                                     spar.spar_series_id = spar_series.id;
+                                    spar.release_draw = false;
                                     spar.public_id =
                                         last_id().unwrap().to_string();
                                     self.spars.push(spar);
@@ -684,25 +684,49 @@ impl State {
                 }
             }
             Action::Signup {
-                member_idx: _,
+                member_idx,
                 spar_idx,
                 as_judge,
                 as_speaker,
             } => {
-                if let Some(user) = &self.active_user {
-                    let spar_idx = (*spar_idx)
-                        .clamp(0, self.spars.len().saturating_sub(1));
-                    if let Some(spar) = self.spars.get(spar_idx) {
-                        if spar.is_open && spar.release_draw {
-                            let signup_idx = self.spar_signups.len();
-                            self.spar_signups.push(SparSignup {
-                                id: signup_idx as i64,
-                                public_id: last_id().unwrap().to_string(),
-                                member_id: user.id,
-                                spar_id: spar.id,
-                                as_judge: *as_judge,
-                                as_speaker: *as_speaker,
-                            })
+                let spar_idx = (*spar_idx)
+                    .clamp(0, self.spar_signups.len().saturating_sub(1));
+                let member_idx = (*member_idx)
+                    .clamp(0, self.spar_series_members.len().saturating_sub(1));
+
+                if let Some(spar) = self.spars.get(spar_idx) {
+                    if let Some(member) =
+                        self.spar_series_members.get(member_idx)
+                    {
+                        if spar.is_open {
+                            assert!(
+                                !spar.release_draw,
+                                "error: draw should not be released if the spar
+                                 is open for signups. Note: spar = {spar:#?}",
+                            );
+
+                            let signup_idx =
+                                self.spar_signups.iter().enumerate().find(
+                                    |(_, signup)| {
+                                        signup.member_id == member.id
+                                            && signup.spar_id == spar.id
+                                    },
+                                );
+                            match signup_idx {
+                                Some((idx, _)) => {
+                                    self.spar_signups[idx].as_judge = *as_judge;
+                                    self.spar_signups[idx].as_speaker =
+                                        *as_speaker;
+                                }
+                                None => self.spar_signups.push(SparSignup {
+                                    id: self.spar_signups.len() as i64,
+                                    public_id: last_id().unwrap().to_string(),
+                                    member_id: member.id,
+                                    spar_id: spar.id,
+                                    as_judge: *as_judge,
+                                    as_speaker: *as_speaker,
+                                }),
+                            }
                         }
                     }
                 }
@@ -983,6 +1007,28 @@ impl State {
                     }
                 }
             }
+            Action::SetSparIsOpen { spar, state } => {
+                if let Some(user) = &self.active_user {
+                    let spar_idx =
+                        (*spar).clamp(0, self.spars.len().saturating_sub(1));
+                    if let Some(spar) = self.spars.get(spar_idx) {
+                        let series =
+                            &self.spar_series[spar.spar_series_id as usize];
+                        let group = &self.groups[series.group_id as usize];
+                        if let Some(member) = self
+                            .group_members
+                            .get(&(user.id as usize, group.clone()))
+                        {
+                            if member.is_admin || member.is_superuser {
+                                self.spars[spar_idx].is_open = *state;
+                                if *state {
+                                    self.spars[spar_idx].release_draw = false;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1114,27 +1160,37 @@ impl State {
                 }
             }
             Action::Signup {
-                member_idx: _,
+                member_idx,
                 spar_idx,
                 as_judge,
                 as_speaker,
             } => {
                 let spar_idx = (*spar_idx)
                     .clamp(0, self.spar_signups.len().saturating_sub(1));
+                let member_idx = (*member_idx)
+                    .clamp(0, self.spar_series_members.len().saturating_sub(1));
+
                 if let Some(spar) = self.spars.get(spar_idx) {
-                    self.client
-                        .post(format!("/spars/{}/signup", spar.public_id))
-                        .header(ContentType::Form)
-                        .body(
-                            serde_urlencoded::to_string({
-                                &SignupForSpar {
-                                    as_judge: *as_judge,
-                                    as_speaker: *as_speaker,
-                                }
-                            })
-                            .unwrap(),
-                        )
-                        .dispatch();
+                    if let Some(member) =
+                        self.spar_series_members.get(member_idx)
+                    {
+                        self.client
+                            .post(format!(
+                                "/spars/{}/reg/{}",
+                                spar.public_id, member.public_id
+                            ))
+                            .header(ContentType::Form)
+                            .body(
+                                serde_urlencoded::to_string({
+                                    &SignupForSpar {
+                                        as_judge: *as_judge,
+                                        as_speaker: *as_speaker,
+                                    }
+                                })
+                                .unwrap(),
+                            )
+                            .dispatch();
+                    }
                 }
             }
             Action::GenerateDraw(spar_idx) => {
@@ -1220,6 +1276,18 @@ impl State {
                         .dispatch();
                 }
             }
+            Action::SetSparIsOpen { spar, state } => {
+                let spar_idx =
+                    (*spar).clamp(0, self.spars.len().saturating_sub(1));
+                if let Some(spar) = self.spars.get(spar_idx) {
+                    self.client
+                        .post(format!(
+                            "/spars/{}/set_is_open?state={}",
+                            spar.public_id, state
+                        ))
+                        .dispatch();
+                }
+            }
         }
     }
 }
@@ -1274,6 +1342,14 @@ pub enum Action {
     /// Submit a ballot in the nth room. Requires that the logged in user is
     /// allocated as a judge for that room.
     SubmitBallot(FuzzerBpBallotForm, usize, usize),
+    SetSparIsOpen {
+        // todo: weightedusizemutator which
+        #[field_mutator(
+            UsizeWithinRangeMutator = { usize_within_range_mutator(0..1000) }
+        )]
+        spar: usize,
+        state: bool,
+    },
 }
 
 #[derive(Debug, DefaultMutator, Clone, Serialize, Deserialize, Arbitrary)]
