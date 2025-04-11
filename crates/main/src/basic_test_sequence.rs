@@ -285,48 +285,13 @@ fn basic_test_sequence() {
         .map(|contents| contents.contains("https://"))
         .unwrap_or(false));
 
-    let ballot_link = spar_adjudicator_ballot_links::table
-        .order_by(spar_adjudicator_ballot_links::created_at.desc())
-        .first::<AdjudicatorBallotLink>(&mut conn)
-        .unwrap();
-
-    let room = spar_rooms::table.first::<SparRoom>(&mut conn).unwrap();
-    assert_eq!(room.id, ballot_link.room_id);
-
-    let repr = room.repr(&mut conn).unwrap();
-    let teams = repr.teams;
-
-    let submission = BpBallotForm {
-        pm: repr.speakers[&teams[0].speakers[0]].public_id.clone(),
-        pm_score: 80,
-        dpm: repr.speakers[&teams[0].speakers[1]].public_id.clone(),
-        dpm_score: 78,
-        lo: repr.speakers[&teams[1].speakers[0]].public_id.clone(),
-        lo_score: 76,
-        dlo: repr.speakers[&teams[1].speakers[1]].public_id.clone(),
-        dlo_score: 75,
-        mg: repr.speakers[&teams[2].speakers[0]].public_id.clone(),
-        mg_score: 77,
-        gw: repr.speakers[&teams[2].speakers[1]].public_id.clone(),
-        gw_score: 74,
-        mo: repr.speakers[&teams[3].speakers[0]].public_id.clone(),
-        mo_score: 73,
-        ow: repr.speakers[&teams[3].speakers[1]].public_id.clone(),
-        ow_score: 72,
-        force: false,
-    };
-
-    rocket
-        .post(format!("/ballots/submit/{}", ballot_link.link))
-        .header(ContentType::Form)
-        .body(&serde_urlencoded::to_string(&submission).unwrap())
-        .dispatch();
+    submit_ballot(&rocket, &mut conn);
 
     // (5) conclude spar
 
-    rocket
-        .post(format!("/spars/{}/mark_complete", spar.public_id))
-        .dispatch();
+    mark_spar_complete(&rocket, spar);
+    let spar = spars::table.first::<Spar>(&mut conn).unwrap();
+    assert!(spar.is_complete);
 
     assert_eq!(
         spar_rooms::table
@@ -335,6 +300,22 @@ fn basic_test_sequence() {
             .unwrap(),
         1
     );
+
+    let room = spar_rooms::table.first::<SparRoom>(&mut conn).unwrap();
+    let repr = room.repr(&mut conn).unwrap();
+    let teams = repr.teams;
+
+    let pm_id = repr.speakers[&teams[0].speakers[0]].public_id.clone();
+    let dpm_id = repr.speakers[&teams[0].speakers[1]].public_id.clone();
+
+    let submitted_ballot = room.canonical_ballot(&mut conn).unwrap().unwrap();
+    let og = &submitted_ballot.scoresheet.teams[0];
+    let pm = &og.speakers[0];
+    let dpm = &og.speakers[1];
+    assert_eq!(pm.score, 80);
+    assert_eq!(repr.speakers[&pm.speaker_id].public_id, pm_id);
+    assert_eq!(dpm.score, 78);
+    assert_eq!(repr.speakers[&dpm.speaker_id].public_id, dpm_id);
 
     // (6) create second spar
 
@@ -415,4 +396,51 @@ fn basic_test_sequence() {
             .unwrap(),
         2
     );
+}
+
+fn mark_spar_complete(rocket: &Client, spar: Spar) {
+    rocket
+        .post(format!("/spars/{}/mark_complete", spar.public_id))
+        .dispatch();
+}
+
+fn submit_ballot(rocket: &Client, conn: &mut SqliteConnection) {
+    let ballot_link = spar_adjudicator_ballot_links::table
+        .order_by(spar_adjudicator_ballot_links::created_at.desc())
+        .first::<AdjudicatorBallotLink>(conn)
+        .unwrap();
+
+    let room = spar_rooms::table.first::<SparRoom>(conn).unwrap();
+    assert_eq!(room.id, ballot_link.room_id);
+
+    let repr = room.repr(conn).unwrap();
+    let teams = repr.teams;
+
+    let pm_id = repr.speakers[&teams[0].speakers[0]].public_id.clone();
+    let dpm_id = repr.speakers[&teams[0].speakers[1]].public_id.clone();
+    let submission = BpBallotForm {
+        pm: pm_id.clone(),
+        pm_score: 80,
+        dpm: dpm_id.clone(),
+        dpm_score: 78,
+        lo: repr.speakers[&teams[1].speakers[0]].public_id.clone(),
+        lo_score: 76,
+        dlo: repr.speakers[&teams[1].speakers[1]].public_id.clone(),
+        dlo_score: 75,
+        mg: repr.speakers[&teams[2].speakers[0]].public_id.clone(),
+        mg_score: 77,
+        gw: repr.speakers[&teams[2].speakers[1]].public_id.clone(),
+        gw_score: 73,
+        mo: repr.speakers[&teams[3].speakers[0]].public_id.clone(),
+        mo_score: 73,
+        ow: repr.speakers[&teams[3].speakers[1]].public_id.clone(),
+        ow_score: 72,
+        force: false,
+    };
+
+    rocket
+        .post(format!("/ballots/submit/{}", ballot_link.link))
+        .header(ContentType::Form)
+        .body(&serde_urlencoded::to_string(&submission).unwrap())
+        .dispatch();
 }

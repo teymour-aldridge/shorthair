@@ -215,7 +215,6 @@ pub async fn do_make_session(
                 ) {
                     Ok(s) => s,
                     Err(_) => {
-                        dbg!(&form.start_time);
                         let markup = create_spar_form(Some(
                             "The provided start time is not a valid date."
                                 .to_string(),
@@ -227,7 +226,7 @@ pub async fn do_make_session(
                     }
                 };
 
-                let previous_spars_complete =
+                let exists_incomplete_spar =
                     diesel::dsl::select(diesel::dsl::exists(
                         spars::table
                             .filter(spars::spar_series_id.eq(spar_series.id))
@@ -240,7 +239,7 @@ pub async fn do_make_session(
                     .count()
                     .get_result::<i64>(conn)?;
 
-                if !previous_spars_complete && (count > 0) {
+                if exists_incomplete_spar && count > 0 {
                     let markup = create_spar_form(Some(
                         "Error: all previous spars must be marked as complete
                          before starting a new spar."
@@ -502,7 +501,7 @@ pub async fn do_request2join_spar_series(
 ) -> Option<Markup> {
     db.run(move |conn| {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            if !is_valid_email(dbg!(&form.email)) {
+            if !is_valid_email(&form.email) {
                 let page = render_request2join_form(Some(
                     "Error: invalid email supplied.".to_string(),
                 ));

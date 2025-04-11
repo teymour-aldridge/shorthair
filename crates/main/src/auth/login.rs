@@ -218,12 +218,12 @@ pub async fn do_login(
     //
     // (to avoid hitting the database we can also consider using a global
     //  RwLock to store this location)
-    let login_code = format!("https://tab.reasoning.page/login/code/{code}");
+    let login_code = format!("https://eldemite.net/login/code/{code}");
 
     let html = maud::html! {
         p { "Dear " (name) "," }
         p {
-            "Please use this link to login to tab.reasoning.page "
+            "Please use this link to login to eldemite.net"
             a href = (login_code) { (login_code) }
         }
     };
@@ -231,7 +231,7 @@ pub async fn do_login(
     let text = format!(
         r#"Dear {},
 
-        Please use this link to log in to tab.reasoning.page
+        Please use this link to log in to eldemite.net
 
         {}
         "#,

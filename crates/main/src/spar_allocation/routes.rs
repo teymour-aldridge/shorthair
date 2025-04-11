@@ -156,7 +156,7 @@ pub async fn single_spar_overview_for_admin_page(
                 Some(SparAdminTab::Signups) => {
                     let code = QrCode::with_version(
                         // todo: allow customization of the domain
-                        format!("https://tab.swissdebating.org/spars/{spar_id}/signup"),
+                        format!("https://eldemite.net/spars/{spar_id}/signup"),
                         Version::Normal(5),
                         EcLevel::L,
                     )
@@ -778,7 +778,7 @@ pub async fn do_release_draw(
                 .load::<(AdjudicatorBallotLink, SparSeriesMember)>(conn)?;
 
             for (adj_link, member) in adjudicators {
-                let ballot_link = format!("https://tab.reasoning.page/ballots/submit/{}", adj_link.link);
+                let ballot_link = format!("https://eldemite.net/ballots/submit/{}", adj_link.link);
                 send_mail(
                     vec![(&member.name, &member.email)],
                     "Ballot link",
@@ -820,6 +820,7 @@ pub async fn do_mark_spar_complete(
             };
 
             let user_id = user.id;
+            // todo: introduce proper permissions system
             let user_has_permission = select(exists(
                 spar_series::table
                     .filter(spar_series::id.eq(spar.spar_series_id))
@@ -886,7 +887,12 @@ pub async fn do_mark_spar_complete(
                 }
             }
 
-            todo!()
+            let n = diesel::update(spars::table.filter(spars::id.eq(spar.id)))
+                .set((spars::is_open.eq(false), spars::is_complete.eq(true)))
+                .execute(conn)
+                .unwrap();
+            assert_eq!(n, 1);
+            Ok(Some(Ok(Redirect::to(format!("/spars/{}", spar.public_id)))))
         })
         .unwrap()
     })
