@@ -152,248 +152,257 @@ impl State {
 
     /// Checks whether the state of the application matches the state of the
     /// model.
+    ///
+    /// TODO: might speed up the fuzzer if we return a Result (with detailed
+    /// error information) rather than panicking here.
     pub fn assert_matches_database(&self, conn: &mut SqliteConnection) {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            let count = users::table.count().get_result::<i64>(conn).unwrap();
-            assert_eq!(count as usize, self.users.len());
-            for user in &self.users {
-                let db_user = users::table
-                    .filter(users::public_id.eq(&user.public_id))
-                    .first::<User>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!(
-                        "error: no matching record for user {:?}",
-                        user
-                    ));
-                assert_eq!(user.username, db_user.username);
-                assert_eq!(user.email_verified, db_user.email_verified);
-                assert_eq!(user.email, db_user.email);
-            }
-
-            // Check groups
-            let group_count = db::schema::groups::table
-                .count()
-                .get_result::<i64>(conn)
-                .unwrap();
-            assert_eq!(group_count as usize, self.groups.len());
-            for group in &self.groups {
-                let db_group = db::schema::groups::table
-                    .filter(db::schema::groups::public_id.eq(&group.public_id))
-                    .first::<Group>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!(
-                        "No matching record for group {:?}",
-                        group
-                    ));
-                assert_eq!(group.name, db_group.name);
-                assert_eq!(group.website, db_group.website);
-                assert_eq!(group.public_id, db_group.public_id);
-            }
-
-            // Check spar series
-            let series_count = db::schema::spar_series::table
-                .count()
-                .get_result::<i64>(conn)
-                .unwrap();
-            assert_eq!(series_count as usize, self.spar_series.len());
-            for series in &self.spar_series {
-                let db_series = db::schema::spar_series::table
-                    .filter(
-                        db::schema::spar_series::public_id
-                            .eq(&series.public_id),
-                    )
-                    .first::<SparSeries>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!(
-                        "No matching record for spar series {:?}",
-                        series
-                    ));
-                assert_eq!(series.title, db_series.title);
-                assert_eq!(series.description, db_series.description);
-                assert_eq!(series.public_id, db_series.public_id);
-            }
-
-            // Check spars
-            let spar_count = db::schema::spars::table
-                .count()
-                .get_result::<i64>(conn)
-                .unwrap();
-            assert_eq!(spar_count as usize, self.spars.len());
-            for spar in &self.spars {
-                let db_spar = db::schema::spars::table
-                    .filter(db::schema::spars::public_id.eq(&spar.public_id))
-                    .first::<Spar>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!("No matching record for spar {:?}", spar));
-                assert_eq!(spar.is_open, db_spar.is_open);
-                assert_eq!(spar.public_id, db_spar.public_id);
-            }
-
-            // Check spar signups
-            let signup_count = db::schema::spar_signups::table
-                .count()
-                .get_result::<i64>(conn)
-                .unwrap();
-            assert_eq!(signup_count as usize, self.spar_signups.len());
-            for signup in &self.spar_signups {
-                let db_signup = db::schema::spar_signups::table
-                    .filter(
-                        db::schema::spar_signups::public_id
-                            .eq(&signup.public_id),
-                    )
-                    .first::<SparSignup>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!(
-                        "No matching record for signup {:?}",
-                        signup
-                    ));
-                assert_eq!(signup.as_judge, db_signup.as_judge);
-                assert_eq!(signup.as_speaker, db_signup.as_speaker);
-                assert_eq!(signup.public_id, db_signup.public_id);
-            }
-
-            // Check spar series members
-            let member_count = db::schema::spar_series_members::table
-                .count()
-                .get_result::<i64>(conn)
-                .unwrap();
-            assert_eq!(member_count as usize, self.spar_series_members.len());
-            for member in &self.spar_series_members {
-                let db_member = db::schema::spar_series_members::table
-                    .filter(
-                        db::schema::spar_series_members::public_id
-                            .eq(&member.public_id),
-                    )
-                    .first::<SparSeriesMember>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!(
-                        "No matching record for series member {:?}",
-                        member
-                    ));
-                assert_eq!(member.public_id, db_member.public_id);
-                assert_eq!(member.name, db_member.name);
-                assert_eq!(member.email, db_member.email);
-            }
-
-            // Check rooms
-            let room_count = db::schema::spar_rooms::table
-                .count()
-                .get_result::<i64>(conn)
-                .unwrap();
-            assert_eq!(room_count as usize, self.rooms.len());
-            for room in &self.rooms {
-                let db_room = db::schema::spar_rooms::table
-                    .filter(
-                        db::schema::spar_rooms::public_id.eq(&room.public_id),
-                    )
-                    .first::<SparRoom>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!("No matching record for room {:?}", room));
-                assert_eq!(room.public_id, db_room.public_id);
-            }
-
-            // Check teams
-            let team_count = db::schema::spar_teams::table
-                .count()
-                .get_result::<i64>(conn)
-                .unwrap();
-            assert_eq!(team_count as usize, self.teams.len());
-            for team in &self.teams {
-                let db_team = db::schema::spar_teams::table
-                    .filter(
-                        db::schema::spar_teams::public_id.eq(&team.public_id),
-                    )
-                    .first::<SparRoomTeam>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!("No matching record for team {:?}", team));
-                assert_eq!(team.public_id, db_team.public_id);
-                assert_eq!(team.position, db_team.position);
-            }
-
-            // Check adjudicators
-            let adj_count = db::schema::spar_adjudicators::table
-                .count()
-                .get_result::<i64>(conn)
-                .unwrap();
-            assert_eq!(adj_count as usize, self.adjs.len());
-            for adj in &self.adjs {
-                let db_adj = db::schema::spar_adjudicators::table
-                    .filter(
-                        db::schema::spar_adjudicators::public_id
-                            .eq(&adj.public_id),
-                    )
-                    .first::<SparRoomAdjudicator>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!(
-                        "No matching record for adjudicator {:?}",
-                        adj
-                    ));
-                assert_eq!(adj.public_id, db_adj.public_id);
-                assert_eq!(adj.member_id, db_adj.member_id);
-                assert_eq!(adj.room_id, db_adj.room_id);
-                assert_eq!(adj.status, db_adj.status);
-            }
-
-            // Check speakers
-            let speaker_count = db::schema::spar_speakers::table
-                .count()
-                .get_result::<i64>(conn)
-                .unwrap();
-            assert_eq!(speaker_count as usize, self.speakers.len());
-            for speaker in &self.speakers {
-                let db_speaker = db::schema::spar_speakers::table
-                    .filter(
-                        db::schema::spar_speakers::public_id
-                            .eq(&speaker.public_id),
-                    )
-                    .first::<SparRoomTeamSpeaker>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!(
-                        "No matching record for speaker {:?}",
-                        speaker
-                    ));
-                assert_eq!(speaker.public_id, db_speaker.public_id);
-                assert_eq!(speaker.member_id, db_speaker.member_id);
-                assert_eq!(speaker.team_id, db_speaker.team_id);
-            }
-
-            // Check ballots
-            let ballot_count = db::schema::adjudicator_ballots::table
-                .count()
-                .get_result::<i64>(conn)
-                .unwrap();
-            assert_eq!(ballot_count as usize, self.ballots.len());
-            for ballot in &self.ballots {
-                let db_ballot = db::schema::adjudicator_ballots::table
-                    .filter(
-                        db::schema::adjudicator_ballots::public_id
-                            .eq(&ballot.public_id),
-                    )
-                    .first::<AdjudicatorBallot>(conn)
-                    .optional()
-                    .unwrap()
-                    .expect(&format!(
-                        "No matching record for ballot {:?}",
-                        ballot
-                    ));
-                assert_eq!(ballot.public_id, db_ballot.public_id);
-                assert_eq!(ballot.adjudicator_id, db_ballot.adjudicator_id);
-                assert_eq!(ballot.room_id, db_ballot.room_id);
-            }
-
+            self.check_users(conn);
+            self.check_groups(conn);
+            self.check_spar_series(conn);
+            self.check_spars(conn);
+            self.check_spar_signups(conn);
+            self.check_spar_series_members(conn);
+            self.check_rooms(conn);
+            self.check_teams(conn);
+            self.check_adjs(conn);
+            self.check_speakers(conn);
+            self.check_ballots(conn);
             Ok(())
         })
         .unwrap()
+    }
+
+    fn check_ballots(&self, conn: &mut SqliteConnection) {
+        let ballot_count = db::schema::adjudicator_ballots::table
+            .count()
+            .get_result::<i64>(conn)
+            .unwrap();
+        assert_eq!(ballot_count as usize, self.ballots.len());
+        for ballot in &self.ballots {
+            let db_ballot = db::schema::adjudicator_ballots::table
+                .filter(
+                    db::schema::adjudicator_ballots::public_id
+                        .eq(&ballot.public_id),
+                )
+                .first::<AdjudicatorBallot>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!("No matching record for ballot {:?}", ballot));
+            assert_eq!(ballot.public_id, db_ballot.public_id);
+            assert_eq!(ballot.adjudicator_id, db_ballot.adjudicator_id);
+            assert_eq!(ballot.room_id, db_ballot.room_id);
+        }
+    }
+
+    fn check_speakers(&self, conn: &mut SqliteConnection) {
+        let speaker_count = db::schema::spar_speakers::table
+            .count()
+            .get_result::<i64>(conn)
+            .unwrap();
+        assert_eq!(speaker_count as usize, self.speakers.len());
+        for speaker in &self.speakers {
+            let db_speaker = db::schema::spar_speakers::table
+                .filter(
+                    db::schema::spar_speakers::public_id.eq(&speaker.public_id),
+                )
+                .first::<SparRoomTeamSpeaker>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!(
+                    "No matching record for speaker {:?}",
+                    speaker
+                ));
+            assert_eq!(speaker.public_id, db_speaker.public_id);
+            assert_eq!(speaker.member_id, db_speaker.member_id);
+            assert_eq!(speaker.team_id, db_speaker.team_id);
+        }
+    }
+
+    fn check_adjs(&self, conn: &mut SqliteConnection) {
+        let adj_count = db::schema::spar_adjudicators::table
+            .count()
+            .get_result::<i64>(conn)
+            .unwrap();
+        assert_eq!(adj_count as usize, self.adjs.len());
+        for adj in &self.adjs {
+            let db_adj = db::schema::spar_adjudicators::table
+                .filter(
+                    db::schema::spar_adjudicators::public_id.eq(&adj.public_id),
+                )
+                .first::<SparRoomAdjudicator>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!(
+                    "No matching record for adjudicator {:?}",
+                    adj
+                ));
+            assert_eq!(adj.public_id, db_adj.public_id);
+            assert_eq!(adj.member_id, db_adj.member_id);
+            assert_eq!(adj.room_id, db_adj.room_id);
+            assert_eq!(adj.status, db_adj.status);
+        }
+    }
+
+    fn check_teams(&self, conn: &mut SqliteConnection) {
+        let team_count = db::schema::spar_teams::table
+            .count()
+            .get_result::<i64>(conn)
+            .unwrap();
+        assert_eq!(team_count as usize, self.teams.len());
+        for team in &self.teams {
+            let db_team = db::schema::spar_teams::table
+                .filter(db::schema::spar_teams::public_id.eq(&team.public_id))
+                .first::<SparRoomTeam>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!("No matching record for team {:?}", team));
+            assert_eq!(team.public_id, db_team.public_id);
+            assert_eq!(team.position, db_team.position);
+        }
+    }
+
+    fn check_rooms(&self, conn: &mut SqliteConnection) {
+        let room_count = db::schema::spar_rooms::table
+            .count()
+            .get_result::<i64>(conn)
+            .unwrap();
+        assert_eq!(room_count as usize, self.rooms.len());
+        for room in &self.rooms {
+            let db_room = db::schema::spar_rooms::table
+                .filter(db::schema::spar_rooms::public_id.eq(&room.public_id))
+                .first::<SparRoom>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!("No matching record for room {:?}", room));
+            assert_eq!(room.public_id, db_room.public_id);
+        }
+    }
+
+    fn check_spar_series_members(&self, conn: &mut SqliteConnection) {
+        let member_count = db::schema::spar_series_members::table
+            .count()
+            .get_result::<i64>(conn)
+            .unwrap();
+        assert_eq!(member_count as usize, self.spar_series_members.len());
+        for member in &self.spar_series_members {
+            let db_member = db::schema::spar_series_members::table
+                .filter(
+                    db::schema::spar_series_members::public_id
+                        .eq(&member.public_id),
+                )
+                .first::<SparSeriesMember>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!(
+                    "No matching record for series member {:?}",
+                    member
+                ));
+            assert_eq!(member.public_id, db_member.public_id);
+            assert_eq!(member.name, db_member.name);
+            assert_eq!(member.email, db_member.email);
+        }
+    }
+
+    fn check_spar_signups(&self, conn: &mut SqliteConnection) {
+        let signup_count = db::schema::spar_signups::table
+            .count()
+            .get_result::<i64>(conn)
+            .unwrap();
+        assert_eq!(signup_count as usize, self.spar_signups.len());
+        for signup in &self.spar_signups {
+            let db_signup = db::schema::spar_signups::table
+                .filter(
+                    db::schema::spar_signups::public_id.eq(&signup.public_id),
+                )
+                .first::<SparSignup>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!("No matching record for signup {:?}", signup));
+            assert_eq!(signup.as_judge, db_signup.as_judge);
+            assert_eq!(signup.as_speaker, db_signup.as_speaker);
+            assert_eq!(signup.public_id, db_signup.public_id);
+        }
+    }
+
+    fn check_spars(&self, conn: &mut SqliteConnection) {
+        let spar_count = db::schema::spars::table
+            .count()
+            .get_result::<i64>(conn)
+            .unwrap();
+        assert_eq!(spar_count as usize, self.spars.len());
+        for spar in &self.spars {
+            let db_spar = db::schema::spars::table
+                .filter(db::schema::spars::public_id.eq(&spar.public_id))
+                .first::<Spar>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!("No matching record for spar {:?}", spar));
+            assert_eq!(spar.is_open, db_spar.is_open);
+            assert_eq!(spar.public_id, db_spar.public_id);
+        }
+    }
+
+    fn check_spar_series(&self, conn: &mut SqliteConnection) {
+        let series_count = db::schema::spar_series::table
+            .count()
+            .get_result::<i64>(conn)
+            .unwrap();
+        assert_eq!(series_count as usize, self.spar_series.len());
+        for series in &self.spar_series {
+            let db_series = db::schema::spar_series::table
+                .filter(
+                    db::schema::spar_series::public_id.eq(&series.public_id),
+                )
+                .first::<SparSeries>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!(
+                    "No matching record for spar series {:?}",
+                    series
+                ));
+            assert_eq!(series.title, db_series.title);
+            assert_eq!(series.description, db_series.description);
+            assert_eq!(series.public_id, db_series.public_id);
+        }
+    }
+
+    fn check_groups(&self, conn: &mut SqliteConnection) {
+        let group_count = db::schema::groups::table
+            .count()
+            .get_result::<i64>(conn)
+            .unwrap();
+        assert_eq!(group_count as usize, self.groups.len());
+        for group in &self.groups {
+            let db_group = db::schema::groups::table
+                .filter(db::schema::groups::public_id.eq(&group.public_id))
+                .first::<Group>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!("No matching record for group {:?}", group));
+            assert_eq!(group.name, db_group.name);
+            assert_eq!(group.website, db_group.website);
+            assert_eq!(group.public_id, db_group.public_id);
+        }
+    }
+
+    fn check_users(&self, conn: &mut SqliteConnection) {
+        let count = users::table.count().get_result::<i64>(conn).unwrap();
+        assert_eq!(count as usize, self.users.len());
+        for user in &self.users {
+            let db_user = users::table
+                .filter(users::public_id.eq(&user.public_id))
+                .first::<User>(conn)
+                .optional()
+                .unwrap()
+                .expect(&format!(
+                    "error: no matching record for user {:?}",
+                    user
+                ));
+            assert_eq!(user.username, db_user.username);
+            assert_eq!(user.email_verified, db_user.email_verified);
+            assert_eq!(user.email, db_user.email);
+        }
     }
 
     /// Removes all data in the model, and then creates a copy of all the data
