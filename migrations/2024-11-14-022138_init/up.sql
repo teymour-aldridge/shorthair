@@ -48,6 +48,8 @@ create table if not exists emails (
     message_id text not null unique,
     -- the contents of the to field
     recipients text not null,
+    -- this field is primarily intended for testing
+    contents text,
     created_at timestamp not null
 );
 
@@ -64,7 +66,19 @@ create table if not exists spar_series (
     speakers_per_team integer not null,
     group_id integer not null,
     created_at timestamp not null,
+    allow_join_requests boolean not null,
+    auto_approve_join_requests boolean not null,
     foreign key (group_id) references groups (id)
+);
+
+create table if not exists spar_series_join_requests (
+    id integer primary key not null,
+    public_id text not null,
+    name text not null,
+    email text not null,
+    spar_series_id integer not null,
+    created_at timestamp not null,
+    foreign key (spar_series_id) references spar_series (id)
 );
 
 create table if not exists spar_series_members (
@@ -120,11 +134,17 @@ create table if not exists spars (
     id integer primary key not null,
     public_id text not null,
     start_time timestamp not null,
+    -- Whether the spar is open for signups.
     is_open boolean not null,
     -- Whether or not to release the draw. Once the draw is released, it is no
     -- longer possible to edit it.
+    --
+    -- Releasing the draw requires that the spar is closed for signups.
     release_draw boolean not null,
     spar_series_id integer not null,
+    -- Whether the spar is finished. In general, all previous spars must have
+    -- been marked complete to start a new spar.
+    is_complete boolean not null,
     created_at timestamp not null,
     foreign key (spar_series_id) references spar_series (id)
 );

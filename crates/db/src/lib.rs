@@ -1,6 +1,7 @@
 #![feature(coverage_attribute)]
 
 pub mod ballot;
+pub mod email;
 pub mod group;
 pub mod magic_link;
 pub mod room;

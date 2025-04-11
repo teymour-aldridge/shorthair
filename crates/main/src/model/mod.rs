@@ -17,7 +17,7 @@ pub mod sync {
 
         /// Generate a new UUID.
         pub fn gen_uuid() -> Uuid {
-            let id = Uuid::now_v7();
+            let id = Uuid::new_v4();
 
             // we only store the ID when testing
             #[cfg(test)]

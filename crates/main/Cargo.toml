@@ -10,7 +10,7 @@ rocket = { version = "0.5.1", features = ["uuid"] }
 db = { path = "../db" }
 email = { path = "../email" }
 diesel = { version = "2.2.4", features = ["chrono", "r2d2"] }
-uuid = { version = "1.11.0", features = ["v7"] }
+uuid = { version = "1.11.0", features = ["v4", "v7"] }
 maud = { version = "0.26.0", features = ["rocket"] }
 url = "2.5.3"
 addr = "0.15.6"

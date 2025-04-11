@@ -233,7 +233,12 @@ pub async fn new_internals_page(
     res.map(|(_group, t)| {
         if t {
             Ok(page_of_body(html! {
-                h1 { "Create internal spar" }
+                h1 { "Create spar series" }
+                div class="alert alert-info" role="alert" {
+                    "Note: a spar series connects a number of spars together.
+                     When generating a draw for a new spar in the series, only
+                     data from previous spars is used."
+                }
                 form method="POST" {
                     div class="mb-3" {
                         label for="title" class="form-label" {
@@ -321,6 +326,8 @@ pub async fn do_create_spar_series(
                     spar_series::speakers_per_team.eq(form.speakers_per_team),
                     spar_series::group_id.eq(group.id),
                     spar_series::created_at.eq(Utc::now().naive_utc()),
+                    spar_series::allow_join_requests.eq(true),
+                    spar_series::auto_approve_join_requests.eq(false),
                 ))
                 .returning(spar_series::public_id)
                 .get_result::<String>(conn)?;

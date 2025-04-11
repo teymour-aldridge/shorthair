@@ -8,11 +8,13 @@ use auth::{
         do_login_with_code, do_password_login, login_page, login_with_password,
     },
     logout,
+    register::{do_register, register_page},
 };
 use ballots::{do_submit_ballot, submit_ballot_page, view_ballot};
 use config_for_internals::{
-    add_member_page, do_add_member, do_make_session, internal_page,
-    make_session_page,
+    add_member_page, approve_join_request, do_add_member, do_make_session,
+    do_request2join_spar_series, internal_page, make_session_page,
+    request2join_spar_series_page,
 };
 use db::{user::User, DbConn};
 use diesel_migrations::{
@@ -38,8 +40,8 @@ use signup_for_spar::{
 use spar_allocation::{
     results::{results_of_spar_page, results_of_spar_series_page},
     routes::{
-        do_release_draw, generate_draw, set_is_open, show_draw_to_admin_page,
-        single_spar_overview_for_admin_page,
+        do_mark_spar_complete, do_release_draw, generate_draw, set_is_open,
+        show_draw_to_admin_page, single_spar_overview_for_admin_page,
         single_spar_overview_for_participants_page,
     },
 };
@@ -48,10 +50,11 @@ pub mod account;
 pub mod admin;
 pub mod auth;
 pub mod ballots;
+#[cfg(test)]
+pub mod basic_test_sequence;
 pub mod config_for_internals;
 pub mod groups;
 pub mod html;
-pub mod id_gen;
 pub mod model;
 pub mod signup_for_spar;
 pub mod spar_allocation;
@@ -152,7 +155,13 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 view_ballot,
                 results_of_spar_series_page,
                 results_of_spar_page,
-                logout::logout
+                logout::logout,
+                register_page,
+                do_register,
+                request2join_spar_series_page,
+                do_request2join_spar_series,
+                approve_join_request,
+                do_mark_spar_complete
             ],
         )
 }

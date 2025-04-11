@@ -34,6 +34,8 @@ pub struct SparSeries {
     pub group_id: i64,
     #[field_mutator(NaiveDateTimeMutator = { naive_date_time_mutator() })]
     pub created_at: NaiveDateTime,
+    pub allow_join_requests: bool,
+    pub auto_approve_join_requests: bool,
 }
 
 #[derive(
@@ -56,6 +58,7 @@ pub struct Spar {
     pub is_open: bool,
     pub release_draw: bool,
     pub spar_series_id: i64,
+    pub is_complete: bool,
     #[field_mutator(NaiveDateTimeMutator = { naive_date_time_mutator() })]
     pub created_at: NaiveDateTime,
 }

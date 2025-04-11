@@ -38,44 +38,122 @@ use super::{
     solve_allocation::{rooms_of_speaker_assignments, solve_lp, Team},
 };
 
-#[get("/spars/<spar_id>")]
+#[derive(Debug, Clone, Copy, FromFormField)]
+pub enum SparAdminTab {
+    Draw,
+    Signups,
+    Settings,
+}
+
+/// Returns a box either red (if closed) or green (if open), which displays a
+/// message indicating the state of the spar, and a button to toggle this state.
+fn spar_signup_status(spar: &Spar) -> Markup {
+    maud::html! {
+        @if spar.is_open {
+            div class="alert alert-success" id="sparStatus" {
+                "Signups are currently "
+                b { "open" }
+                form
+                    hx-post=(format!("/spars/{}/set_is_open?state=false", spar.public_id))
+                    hx-target="#sparStatus"
+                    hx-swap="outerHTML" {
+                    button class="btn btn-link" type="submit" {"click to set to closed"}
+                }
+            }
+        }
+        @if !spar.is_open {
+            div class="alert alert-danger" id="sparStatus" {
+                "Signups are currently "
+                b { "closed" }
+                form
+                    hx-post=(format!("/spars/{}/set_is_open?state=true", spar.public_id))
+                    hx-target="#sparStatus"
+                    hx-swap="outerHTML" {
+                    button class="btn btn-link" type="submit" {"click to set to open"}
+                }
+            }
+        }
+    }
+}
+
+#[get("/spars/<spar_id>?<tab>")]
+/// Displays the overview of a single spar for admins/those with signing power
+/// for a given group.
+///
+/// TODO: what is the correct UI for this (e.g. signups/draw/etc)
+/// maybe a tab for "draw/signups/etc" - can load data + check permissions and
+/// then pick the tab to load.
 pub async fn single_spar_overview_for_admin_page(
     spar_id: String,
     db: DbConn,
     user: User,
+    tab: Option<SparAdminTab>,
 ) -> Option<Result<Markup, Unauthorized<()>>> {
     db.run(move |conn| {
         conn.transaction::<_, diesel::result::Error, _>(move |conn| {
             let sid = spar_id.clone();
-            let session = spars::table
+            let spar = spars::table
                 .filter(spars::public_id.eq(sid))
                 .get_result::<Spar>(conn)
                 .optional()
                 .unwrap();
 
-            match session {
-                Some(session) => {
-                    let spar_series = spar_series::table.filter(spar_series::id.eq(session.id))
-                        .first::<SparSeries>(conn)?;
-                    let user_id = user.id;
-                    let user_has_permission = select(exists(
-                        spar_series::table
-                            .filter(spar_series::id.eq(session.spar_series_id))
-                            .inner_join(groups::table.inner_join(group_members::table))
-                            .filter(group_members::user_id.eq(user_id))
-                            .filter(
-                                group_members::is_admin
-                                    .eq(true)
-                                    .or(group_members::has_signing_power.eq(true)),
-                            ),
-                    ))
-                    .get_result::<bool>(conn)
-                    .unwrap();
+            let spar = match spar {
+                None => return Ok(None),
+                Some(spar) => {
+                    spar
+                }
+            };
 
-                    if !user_has_permission {
-                        return Ok(Some(Err(Unauthorized(()))));
+            let spar_series = spar_series::table.filter(spar_series::id.eq(spar.id))
+                .first::<SparSeries>(conn)?;
+            let user_id = user.id;
+            let user_has_permission = select(exists(
+                spar_series::table
+                    .filter(spar_series::id.eq(spar.spar_series_id))
+                    .inner_join(groups::table.inner_join(group_members::table))
+                    .filter(group_members::user_id.eq(user_id))
+                    .filter(
+                        group_members::is_admin
+                            .eq(true)
+                            .or(group_members::has_signing_power.eq(true)),
+                    ),
+            ))
+            .get_result::<bool>(conn)
+            .unwrap();
+
+            if !user_has_permission {
+                return Ok(Some(Err(Unauthorized(()))));
+            }
+
+            let page = match tab {
+                Some(SparAdminTab::Draw) | None => {
+                    let draw = spar_rooms::table
+                        .filter(spar_rooms::spar_id.eq(spar.id))
+                        .load::<SparRoom>(conn)?
+                        .into_iter()
+                        .map(|room| SparRoomRepr::of_id(room.id, conn))
+                        .collect::<Result<Vec<SparRoomRepr>, _>>()?;
+
+                    let ballots = ballots_of_rooms(&draw, conn)?;
+
+                    maud::html! {
+                        @if !draw.is_empty() {
+                            h3 {"Existing draw"}
+                            (render_draw(draw, ballots))
+                        }
+
+                        form method="post" action={"/spars/"(spar.public_id)"/makedraw"} {
+                            p class="text-danger" {
+                                b { "WARNING: generating a draw will delete any existing draw as well as all associated data (e.g. ballots from adjudicators)" }
+                            }
+                            button class="btn btn-danger" type="submit" {
+                                "Generate draw"
+                            }
+                        }
                     }
-
+                },
+                Some(SparAdminTab::Signups) => {
                     let code = QrCode::with_version(
                         // todo: allow customization of the domain
                         format!("https://tab.swissdebating.org/spars/{spar_id}/signup"),
@@ -83,6 +161,7 @@ pub async fn single_spar_overview_for_admin_page(
                         EcLevel::L,
                     )
                     .unwrap();
+
                     let qr_code = code
                         .render()
                         .min_dimensions(200, 200)
@@ -92,7 +171,7 @@ pub async fn single_spar_overview_for_admin_page(
 
                     let signups = {
                         let t = spar_signups::table
-                            .filter(spar_signups::spar_id.eq(session.id))
+                            .filter(spar_signups::spar_id.eq(spar.id))
                             .load::<SparSignup>(conn)
                             .unwrap();
                         t.into_iter()
@@ -100,97 +179,89 @@ pub async fn single_spar_overview_for_admin_page(
                             .collect::<Vec<_>>()
                     };
 
-                    let draw = spar_rooms::table
-                        .filter(spar_rooms::spar_id.eq(session.id))
-                        .load::<SparRoom>(conn)?
-                        .into_iter()
-                        .map(|room| SparRoomRepr::of_id(room.id, conn))
-                        .collect::<Result<Vec<SparRoomRepr>, _>>()?;
-
-                    let ballots = ballots_of_rooms(&draw, conn)?;
-
-                    Ok(Some(Ok(page_of_body(
-                        html! {
-                            h1 {
-                                "Session time "
-                                span class="render-date" { (session.start_time) }
-                            }
-
-
-                            @if !draw.is_empty() {
-                                h3 {"Existing draw"}
-                                (render_draw(draw, ballots))
-                            }
-
-
-                            h3 { "Signups" }
-                                @if session.is_open {
-                                    div class="alert alert-success" {
-                                        "Signups are currently "
-                                        b { "open" }
-                                        form method="post" action=(format!("/spars/{}/set_is_open?state=false", spar_id)) {
-                                            button class="btn btn-link" type="submit" {"click to set to closed"}
-                                        }
-                                    }
+                    maud::html! {
+                        h3 { "Signups" }
+                        p {
+                            b {"Note: "} "new members must be entered into the
+                            system before they may join. You can do so "
+                            a
+                                href=(format!("/spar_series/{}/add_member", spar_series.public_id)) {
+                                    "on the add members page."
                                 }
-                                @if !session.is_open {
-                                    div class="alert alert-danger" {
-                                        "Signups are currently "
-                                        b { "closed" }
-                                        form method="post" action=(format!("/spars/{}/set_is_open?state=true", spar_id)) {
-                                            button class="btn btn-link" type="submit" {"click to set to open"}
-                                        }
-                                    }
+                        }
+                        (spar_signup_status(&spar))
+
+                        (PreEscaped(qr_code))
+
+                        table class="table" {
+                            thead {
+                                tr {
+                                    th scope="col" { "#" }
+                                    th scope="col" { "User name" }
+                                    th scope="col" { "As judge?" }
+                                    th scope="col" { "As speaker?" }
                                 }
-
-
-                            p {
-                                b {"Note: "} "new members must be entered into the
-                                system before they may join. You can do so "
-                                a
-                                    href=(format!("/spar_series/{}/add_member", spar_series.public_id)) {
-                                        "on the add members page."
-                                    }
                             }
-
-                            (PreEscaped(qr_code))
-
-                            table class="table" {
-                                thead {
+                            tbody {
+                                @for (i, signup) in signups.iter().enumerate() {
                                     tr {
-                                        th scope="col" { "#" }
-                                        th scope="col" { "User name" }
-                                        th scope="col" { "As judge?" }
-                                        th scope="col" { "As speaker?" }
-                                    }
-                                }
-                                tbody {
-                                    @for (i, signup) in signups.iter().enumerate() {
-                                        tr {
-                                            th scope="row" { (i + 1) }
-                                            // todo: restrict set of allowed usernames
-                                            td { (signup.member.name) }
-                                            td { (signup.as_judge) }
-                                            td { (signup.as_speaker) }
-                                        }
+                                        th scope="row" { (i + 1) }
+                                        // todo: restrict set of allowed usernames
+                                        td { (signup.member.name) }
+                                        td { (signup.as_judge) }
+                                        td { (signup.as_speaker) }
                                     }
                                 }
                             }
-
-                            form method="post" action={"/spars/"(session.public_id)"/makedraw"} {
-                                p class="text-danger" {
-                                    b { "WARNING: generating a draw will delete any existing draw as well as all associated data (e.g. ballots from adjudicators)" }
-                                }
-                                button class="btn btn-danger" type="submit" {
-                                    "Generate draw"
-                                }
-                            }
-                        },
-                        Some(user),
-                    ))))
+                        }
+                    }
+                },
+                Some(SparAdminTab::Settings) => {
+                    maud::html! {
+                        h3 {"Settings"}
+                        p {
+                            "There are currently no settings available to
+                             configure (this page is here in case the
+                             developers need to add settings later)."
+                        }
+                    }
                 }
-                None => Ok(None),
-            }
+            };
+
+            let draw_is_active = if matches!(tab, Some(SparAdminTab::Draw) | None) {"active"} else {""};
+            let signups_is_active = if matches!(tab, Some(SparAdminTab::Signups)) {"active"} else {""};
+            let settings_is_active = if matches!(tab, Some(SparAdminTab::Settings)) {"active"} else {""};
+
+            Ok(Some(Ok(page_of_body(
+                html! {
+                    h1 {
+                        "Spar session taking place at "
+                        span class="render-date" { (spar.start_time) }
+                    }
+
+                    ul class = "my-3 bg-primary-subtle nav nav-pills flex-column flex-sm-row" {
+                        li class = "nav-item" {
+                            a href=(format!("/spars/{spar_id}?tab=draw")) class=(format!("nav-link {draw_is_active}")) {
+                                "Draw"
+                            }
+                        }
+                        li class = "nav-item" {
+                            a href=(format!("/spars/{spar_id}?tab=signups")) class=(format!("nav-link {signups_is_active}")) {
+                                "Signups"
+                            }
+                        }
+                        li class = "nav-item" {
+                            a href=(format!("/spars/{spar_id}?tab=settings")) class=(format!("nav-link {settings_is_active}")) {
+                                "Settings"
+                            }
+                        }
+                        // todo: add "set complete" link
+                    }
+
+                    (page)
+                },
+                Some(user),
+            ))))
         })
         .unwrap()
     })
@@ -237,12 +308,13 @@ pub async fn single_spar_overview_for_participants_page(
 }
 
 #[post("/spars/<spar_id>/set_is_open?<state>")]
+/// Opens/closes the spar for signups.
 pub async fn set_is_open(
     db: DbConn,
     user: User,
     spar_id: String,
     state: bool,
-) -> Option<Redirect> {
+) -> Option<Markup> {
     db.run(move |conn| {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
@@ -286,7 +358,12 @@ pub async fn set_is_open(
                         .execute(conn)?;
                 }
 
-                Ok(Some(Redirect::to(format!("/spars/{}", spar_id))))
+                // todo: can remove this query and just update spar in-place
+                let spar = spars::table
+                    .filter(spars::public_id.eq(&spar_id))
+                    .first::<Spar>(conn)?;
+
+                Ok(Some(spar_signup_status(&spar)))
             } else {
                 Ok(None)
             }
@@ -298,6 +375,8 @@ pub async fn set_is_open(
 
 #[post("/spars/<session_id>/makedraw")]
 /// Generate the draw for the internal sessions.
+///
+/// TODO: we ideally want a way to preview the new draw before adopting it.
 pub async fn generate_draw(
     user: User,
     session_id: String,
@@ -394,6 +473,7 @@ pub async fn generate_draw(
                     .get_result::<i64>(conn)?;
 
 
+
                 for adj in room.panel {
                     let adj_signup = &signups[&adj];
                     diesel::insert_into(spar_adjudicators::table)
@@ -412,7 +492,7 @@ pub async fn generate_draw(
                     // todo: when deleting the records for previous rooms, we
                     // should transfer the links over to the newly instantiated
                     // rooms
-                    let key = Uuid::now_v7().to_string();
+                    let key = Uuid::new_v4().to_string();
                     diesel::insert_into(spar_adjudicator_ballot_links::table).values((
                         spar_adjudicator_ballot_links::public_id.eq(Uuid::now_v7().to_string()),
                         spar_adjudicator_ballot_links::link.eq(&key),
@@ -698,7 +778,7 @@ pub async fn do_release_draw(
                 .load::<(AdjudicatorBallotLink, SparSeriesMember)>(conn)?;
 
             for (adj_link, member) in adjudicators {
-                let ballot_link = format!("https://spar.swissdebating.org/ballots/submit/{}", adj_link.link);
+                let ballot_link = format!("https://tab.reasoning.page/ballots/submit/{}", adj_link.link);
                 send_mail(
                     vec![(&member.name, &member.email)],
                     "Ballot link",
@@ -711,6 +791,102 @@ pub async fn do_release_draw(
             }
 
             Ok(Either::Right(Redirect::to(format!("/spars/{spar_id}"))))
+        })
+        .unwrap()
+    })
+    .await
+}
+
+#[post("/spars/<spar_id>/mark_complete?<force>")]
+pub async fn do_mark_spar_complete(
+    spar_id: String,
+    user: User,
+    db: DbConn,
+    // whether we should over-ride issues (e.g. missing ballots, no spar was
+    // actually conducted)
+    //
+    // todo: should people be able to "un-mark" spars?
+    force: bool,
+) -> Option<Result<Redirect, Markup>> {
+    db.run(move |conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let spar = spars::table
+                .filter(spars::public_id.eq(spar_id))
+                .first::<Spar>(conn)
+                .optional()?;
+            let spar = match spar {
+                Some(spar) => spar,
+                None => return Ok(None),
+            };
+
+            let user_id = user.id;
+            let user_has_permission = select(exists(
+                spar_series::table
+                    .filter(spar_series::id.eq(spar.spar_series_id))
+                    .inner_join(groups::table.inner_join(group_members::table))
+                    .filter(group_members::user_id.eq(user_id))
+                    .filter(
+                        group_members::is_admin
+                            .eq(true)
+                            .or(group_members::has_signing_power.eq(true)),
+                    ),
+            ))
+            .get_result::<bool>(conn)
+            .unwrap();
+
+            if !user_has_permission {
+                return Ok(Some(Err(error_403(
+                    Some("Error: you do not have permission to do that!"),
+                    Some(user),
+                ))));
+            }
+
+            if !force {
+                #[derive(Debug)]
+                enum Problem {
+                    // todo: fix whatever this is
+                    #[allow(dead_code)]
+                    MissingBallots { count: usize },
+                    /// We never generated a draw!
+                    NoSparStarted,
+                }
+
+                let mut problems = Vec::with_capacity(2);
+
+                let rooms_without_ballots = spar_rooms::table
+                    .filter(spar_rooms::spar_id.eq(spar.id))
+                    .inner_join(adjudicator_ballots::table)
+                    .select(spar_rooms::all_columns)
+                    .count()
+                    .get_result::<i64>(conn)?;
+
+                let total_rooms = spar_rooms::table
+                    .filter(spar_rooms::spar_id.eq(spar.id))
+                    .count()
+                    .get_result::<i64>(conn)?;
+
+                assert!(
+                    rooms_without_ballots <= total_rooms,
+                    "error: rooms_without_ballots={rooms_without_ballots} and
+                            total_rooms={total_rooms}"
+                );
+                assert!(
+                    rooms_without_ballots >= 0,
+                    "rooms_without_ballots={rooms_without_ballots}"
+                );
+
+                if rooms_without_ballots > 0 {
+                    problems.push(Problem::MissingBallots {
+                        count: (total_rooms - rooms_without_ballots) as usize,
+                    });
+                }
+
+                if total_rooms == 0 {
+                    problems.push(Problem::NoSparStarted);
+                }
+            }
+
+            todo!()
         })
         .unwrap()
     })

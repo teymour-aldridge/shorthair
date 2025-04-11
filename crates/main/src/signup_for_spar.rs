@@ -256,7 +256,8 @@ pub async fn do_register_for_spar(
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
-                .first::<Spar>(conn)?;
+                .first::<Spar>(conn)
+                .unwrap();
 
             if spar.release_draw || !spar.is_open {
                 return Ok(error_403(
@@ -270,8 +271,9 @@ pub async fn do_register_for_spar(
             }
 
             let member = spar_series_members::table
-                .filter(spar_series_members::public_id.eq(&member_id))
-                .first::<SparSeriesMember>(conn)?;
+                .filter(spar_series_members::public_id.eq(member_id))
+                .first::<SparSeriesMember>(conn)
+                .unwrap();
 
             diesel::insert_into(spar_signups::table)
                 .values((
@@ -287,7 +289,8 @@ pub async fn do_register_for_spar(
                     spar_signups::as_judge.eq(form.as_judge),
                     spar_signups::as_speaker.eq(form.as_speaker),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .unwrap();
 
             Ok(page_of_body(
                 maud::html! {

@@ -11,7 +11,21 @@ pub fn short_random(n: usize) -> String {
 }
 
 pub fn is_valid_email(string: &str) -> bool {
-    static RE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(include_str!("email_regex")).unwrap());
+    static RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(
+            r"(?m)^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$",
+        )
+        .unwrap()
+    });
     RE.is_match(string)
+}
+
+#[cfg(test)]
+mod test_email_regex {
+    use crate::util::is_valid_email;
+
+    #[test]
+    fn test_simple_test_email() {
+        assert!(is_valid_email("judge1@example.com"))
+    }
 }

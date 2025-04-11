@@ -16,10 +16,7 @@ use std::collections::HashMap;
 
 use db::{
     ballot::BpTeam,
-    schema::{
-        adjudicator_ballots, spar_rooms, spar_series_members, spar_speakers,
-        spar_teams, spars,
-    },
+    schema::{adjudicator_ballots, spar_rooms, spar_series_members, spars},
     spar::SparRoom,
 };
 use diesel::{prelude::*, SqliteConnection};
@@ -41,13 +38,8 @@ pub fn compute_scores(
         .load::<SparRoom>(conn)?;
 
     // maps speaker ids (as in the database) to their respective scores
-    let mut speaker_ids_to_scores_map = spar_speakers::table
-        .inner_join(
-            spar_teams::table
-                .inner_join(spar_rooms::table.inner_join(spars::table)),
-        )
-        .filter(spars::spar_series_id.eq(series_id))
-        .inner_join(spar_series_members::table)
+    let mut member_ids_to_scores_map = spar_series_members::table
+        .filter(spar_series_members::spar_series_id.eq(series_id))
         .select(spar_series_members::id)
         .load::<i64>(conn)?
         .into_iter()
@@ -68,28 +60,40 @@ pub fn compute_scores(
                 .speakers
                 .iter()
                 .map(|speaker_id| {
-                    speaker_ids_to_scores_map.get(&speaker_id).unwrap().clone()
+                    member_ids_to_scores_map
+                        .get(&room_repr.speakers[speaker_id].member_id)
+                        .unwrap()
+                        .clone()
                 })
                 .collect::<Vec<_>>();
             let oo = teams[1]
                 .speakers
                 .iter()
                 .map(|speaker_id| {
-                    speaker_ids_to_scores_map.get(&speaker_id).unwrap().clone()
+                    member_ids_to_scores_map
+                        .get(&room_repr.speakers[speaker_id].member_id)
+                        .unwrap()
+                        .clone()
                 })
                 .collect::<Vec<_>>();
             let cg = teams[2]
                 .speakers
                 .iter()
                 .map(|speaker_id| {
-                    speaker_ids_to_scores_map.get(&speaker_id).unwrap().clone()
+                    member_ids_to_scores_map
+                        .get(&room_repr.speakers[speaker_id].member_id)
+                        .unwrap()
+                        .clone()
                 })
                 .collect::<Vec<_>>();
             let co = teams[3]
                 .speakers
                 .iter()
                 .map(|speaker_id| {
-                    speaker_ids_to_scores_map.get(&speaker_id).unwrap().clone()
+                    member_ids_to_scores_map
+                        .get(&room_repr.speakers[speaker_id].member_id)
+                        .unwrap()
+                        .clone()
                 })
                 .collect::<Vec<_>>();
             (og, oo, cg, co)
@@ -142,49 +146,57 @@ pub fn compute_scores(
         let _update_og = {
             let new_og = &new_teams[0];
             let og_speakers = &teams[0].speakers;
-            let speaker_1 =
-                speaker_ids_to_scores_map.get_mut(&og_speakers[0]).unwrap();
+            let speaker_1 = member_ids_to_scores_map
+                .get_mut(&room_repr.speakers[&og_speakers[0]].member_id)
+                .unwrap();
             *speaker_1 = new_og[0];
-            let speaker_2 =
-                speaker_ids_to_scores_map.get_mut(&og_speakers[1]).unwrap();
+            let speaker_2 = member_ids_to_scores_map
+                .get_mut(&room_repr.speakers[&og_speakers[1]].member_id)
+                .unwrap();
             *speaker_2 = new_og[1];
         };
 
         let _update_oo = {
             let new_oo = &new_teams[1];
             let oo_speakers = &teams[1].speakers;
-            let speaker_1 =
-                speaker_ids_to_scores_map.get_mut(&oo_speakers[0]).unwrap();
+            let speaker_1 = member_ids_to_scores_map
+                .get_mut(&room_repr.speakers[&oo_speakers[0]].member_id)
+                .unwrap();
             *speaker_1 = new_oo[0];
-            let speaker_2 =
-                speaker_ids_to_scores_map.get_mut(&oo_speakers[1]).unwrap();
+            let speaker_2 = member_ids_to_scores_map
+                .get_mut(&room_repr.speakers[&oo_speakers[1]].member_id)
+                .unwrap();
             *speaker_2 = new_oo[1];
         };
 
         let _update_cg = {
             let new_cg = &new_teams[2];
             let cg_speakers = &teams[2].speakers;
-            let speaker_1 =
-                speaker_ids_to_scores_map.get_mut(&cg_speakers[0]).unwrap();
+            let speaker_1 = member_ids_to_scores_map
+                .get_mut(&room_repr.speakers[&cg_speakers[0]].member_id)
+                .unwrap();
             *speaker_1 = new_cg[0];
-            let speaker_2 =
-                speaker_ids_to_scores_map.get_mut(&cg_speakers[1]).unwrap();
+            let speaker_2 = member_ids_to_scores_map
+                .get_mut(&room_repr.speakers[&cg_speakers[1]].member_id)
+                .unwrap();
             *speaker_2 = new_cg[1];
         };
 
         let _update_co = {
             let new_co = &new_teams[2];
             let co_speakers = &teams[2].speakers;
-            let speaker_1 =
-                speaker_ids_to_scores_map.get_mut(&co_speakers[0]).unwrap();
+            let speaker_1 = member_ids_to_scores_map
+                .get_mut(&room_repr.speakers[&co_speakers[0]].member_id)
+                .unwrap();
             *speaker_1 = new_co[0];
-            let speaker_2 =
-                speaker_ids_to_scores_map.get_mut(&co_speakers[1]).unwrap();
+            let speaker_2 = member_ids_to_scores_map
+                .get_mut(&room_repr.speakers[&co_speakers[1]].member_id)
+                .unwrap();
             *speaker_2 = new_co[1];
         };
     }
 
-    Ok(speaker_ids_to_scores_map
+    Ok(member_ids_to_scores_map
         .into_iter()
         .map(|(id, score)| (id, score.rating))
         .collect())

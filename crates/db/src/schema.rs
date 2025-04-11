@@ -27,6 +27,7 @@ diesel::table! {
         id -> BigInt,
         message_id -> Text,
         recipients -> Text,
+        contents -> Nullable<Text>,
         created_at -> Timestamp,
     }
 }
@@ -101,6 +102,19 @@ diesel::table! {
         speakers_per_team -> BigInt,
         group_id -> BigInt,
         created_at -> Timestamp,
+        allow_join_requests -> Bool,
+        auto_approve_join_requests -> Bool,
+    }
+}
+
+diesel::table! {
+    spar_series_join_requests (id) {
+        id -> BigInt,
+        public_id -> Text,
+        name -> Text,
+        email -> Text,
+        spar_series_id -> BigInt,
+        created_at -> Timestamp,
     }
 }
 
@@ -152,6 +166,7 @@ diesel::table! {
         is_open -> Bool,
         release_draw -> Bool,
         spar_series_id -> BigInt,
+        is_complete -> Bool,
         created_at -> Timestamp,
     }
 }
@@ -183,6 +198,7 @@ diesel::joinable!(spar_adjudicators -> spar_rooms (room_id));
 diesel::joinable!(spar_adjudicators -> spar_series_members (member_id));
 diesel::joinable!(spar_rooms -> spars (spar_id));
 diesel::joinable!(spar_series -> groups (group_id));
+diesel::joinable!(spar_series_join_requests -> spar_series (spar_series_id));
 diesel::joinable!(spar_series_members -> spar_series (spar_series_id));
 diesel::joinable!(spar_signups -> spar_series_members (member_id));
 diesel::joinable!(spar_signups -> spars (spar_id));
@@ -202,6 +218,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     spar_adjudicators,
     spar_rooms,
     spar_series,
+    spar_series_join_requests,
     spar_series_members,
     spar_signups,
     spar_speakers,

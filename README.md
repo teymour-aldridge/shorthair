@@ -7,15 +7,15 @@ debater fashion text me on Facebook Messenger.
 
 ## Packages
 
-- [ ] spar generator - a spar generator. Produces a QR code you can send to
-      people to sign up. Then uses integer linear programming in order to
-      generate a draw which creates pro-am pairings.
+- spar generator - a spar generator. Produces a QR code you can send to
+  people to sign up. Then uses integer linear programming in order to
+  generate a draw which creates pro-am pairings.
+- Model-based test for the application, along the lines of
+  [this excellent article](https://concerningquality.com/model-based-testing/)
+
 
 ## Planned things
 
-- [ ] Model-based test for the application, along the lines of
-      [this excellent article](https://concerningquality.com/model-based-testing/)
-- [ ] Many updates to the spar generator draw algorithm are needed.
 - [ ] High-quality adjudicator allocation, a lá
       [Adjumo](https://czlee.nz/debating/adjumo.pdf), intended to automatically
       allocate adjudicators for large tournaments according to any set of

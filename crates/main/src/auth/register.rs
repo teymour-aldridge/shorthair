@@ -7,6 +7,7 @@ use diesel::{dsl::now, insert_into, prelude::*};
 use maud::Markup;
 use rand::rngs::OsRng;
 use rocket::{form::Form, response::Redirect};
+use serde::Serialize;
 
 use crate::{html::page_of_body, model::sync::id::gen_uuid};
 
@@ -51,12 +52,12 @@ fn register_form(form: Option<&RegisterForm>, error: Option<&str>) -> Markup {
     page_of_body(markup, None)
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, Serialize)]
 pub struct RegisterForm {
-    username: String,
-    email: String,
-    password: String,
-    password2: String,
+    pub(crate) username: String,
+    pub(crate) email: String,
+    pub(crate) password: String,
+    pub(crate) password2: String,
 }
 
 #[post("/register", data = "<form>")]
