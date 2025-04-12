@@ -115,80 +115,9 @@ mod regressions {
         let runner = make_test_runner();
         (runner)(
             &serde_json::from_str(include_str!(
-                "testcases/9aca06d881c8f7d8.json"
+                "testcases/ff13d114fc562004.json"
             ))
             .unwrap(),
         );
-        println!("finished regression 1");
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/af03e2dfc3f943a9.json"
-            ))
-            .unwrap(),
-        );
-        println!("finished regression 2");
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/647fca9e700fa63b.json"
-            ))
-            .unwrap(),
-        );
-        println!("finished regression 3");
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/cba213fd9f4e7bae.json"
-            ))
-            .unwrap(),
-        );
-        println!("finished regression 4");
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/133da9856d5f9aef.json"
-            ))
-            .unwrap(),
-        );
-        println!("finished regression 5");
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/910f4f1edb988eb6.json"
-            ))
-            .unwrap(),
-        );
-        println!("finished regression 6");
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/7e808986f57a4260.json"
-            ))
-            .unwrap(),
-        );
-        println!("finished regression 7");
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/836b6abeca54d2ef.json"
-            ))
-            .unwrap(),
-        );
-        println!("finished regression 8");
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/3a8d3836ef6ec257.json"
-            ))
-            .unwrap(),
-        );
-        println!("finished regression 9");
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/79c3f1deefbd9d84.json"
-            ))
-            .unwrap(),
-        );
-        println!("finished regression 10");
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/991cbb859b546307.json"
-            ))
-            .unwrap(),
-        );
-        println!("finished regression 11");
     }
 }

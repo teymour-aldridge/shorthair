@@ -27,10 +27,11 @@ use uuid::Uuid;
 use crate::{
     admin::setup::SetupForm,
     auth::login::PasswordLoginForm,
-    ballots::BpBallotForm,
-    config_for_internals::MakeSessionForm,
     groups::{CreateGroupForm, CreateSparSeriesForm},
-    signup_for_spar::SignupForSpar,
+    spar_generation::{
+        ballots::BpBallotForm, config_for_internals::MakeSessionForm,
+        signup_for_spar::SignupForSpar,
+    },
 };
 
 use super::sync::id::last_id;
@@ -658,39 +659,45 @@ impl State {
                 }
             }
             Action::CreateSpar(spar) => {
-                if let Some(user) = &self.active_user {
-                    let series_idx = (spar.spar_series_id as usize)
-                        .clamp(0, self.spar_series.len().saturating_sub(1));
-                    if let Some(spar_series) = self.spar_series.get(series_idx)
-                    {
-                        if let Some(group) =
-                            self.groups.get(spar_series.group_id as usize)
-                        {
-                            if let Some(membership) = self
-                                .group_members
-                                .get(&(user.id as usize, group.clone()))
-                            {
-                                if membership.is_admin
-                                    || membership.is_superuser
-                                {
-                                    let spar_id = self.spars.len();
-                                    let mut spar = spar.clone();
-                                    spar.id = spar_id as i64;
-                                    spar.spar_series_id = spar_series.id;
-                                    spar.release_draw = false;
-                                    spar.public_id =
-                                        last_id().unwrap().to_string();
-                                    self.spars.push(spar);
-                                    assert_eq!(
-                                        self.spars[spar_id as usize].id
-                                            as usize,
-                                        spar_id
-                                    );
-                                }
-                            }
-                        }
-                    }
+                let user = match &self.active_user {
+                    Some(user) => user,
+                    None => return,
+                };
+                let series_idx = (spar.spar_series_id as usize)
+                    .clamp(0, self.spar_series.len().saturating_sub(1));
+                let spar_series = match self.spar_series.get(series_idx) {
+                    Some(series) => series,
+                    None => return,
+                };
+                let group = match self.groups.get(spar_series.group_id as usize)
+                {
+                    Some(group) => group,
+                    None => return,
+                };
+                let membership = match self
+                    .group_members
+                    .get(&(user.id as usize, group.clone()))
+                {
+                    Some(membership) => membership,
+                    None => return,
+                };
+                if !(membership.is_admin || membership.is_superuser) {
+                    return;
                 }
+                let all_previous_spars_complete =
+                    &self.spars.iter().all(|spar| spar.is_complete);
+                if !all_previous_spars_complete {
+                    return;
+                }
+                let spar_id = self.spars.len();
+                let mut spar = spar.clone();
+                spar.id = spar_id as i64;
+                spar.spar_series_id = spar_series.id;
+                spar.is_complete = false;
+                spar.release_draw = false;
+                spar.public_id = last_id().unwrap().to_string();
+                self.spars.push(spar);
+                assert_eq!(self.spars[spar_id as usize].id as usize, spar_id);
             }
             Action::Signup {
                 member_idx,
@@ -1275,7 +1282,7 @@ impl State {
                         .header(ContentType::Form)
                         .body(
                             &serde_urlencoded::to_string(
-                                &crate::config_for_internals::AddMemberForm {
+                                &crate::spar_generation::config_for_internals::AddMemberForm {
                                     name: spar_series_member.name.clone(),
                                     email: spar_series_member.email.clone(),
                                 },

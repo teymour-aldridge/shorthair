@@ -500,7 +500,7 @@ mod test_allocations {
     use db::spar::SparSignup;
     use itertools::Itertools;
 
-    use crate::spar_allocation::solve_allocation::solve_lp;
+    use crate::spar_generation::allocation_problem::solve_allocation::solve_lp;
 
     use super::{rooms_of_speaker_assignments, Assignment};
 
@@ -738,16 +738,16 @@ mod test_allocations {
 
             for (speaker_idx, team) in teams {
                 match team {
-                    crate::spar_allocation::solve_allocation::Team::Og => {
+                    crate::spar_generation::allocation_problem::solve_allocation::Team::Og => {
                         og.insert(speaker_idx)
                     }
-                    crate::spar_allocation::solve_allocation::Team::Oo => {
+                    crate::spar_generation::allocation_problem::solve_allocation::Team::Oo => {
                         oo.insert(speaker_idx)
                     }
-                    crate::spar_allocation::solve_allocation::Team::Cg => {
+                    crate::spar_generation::allocation_problem::solve_allocation::Team::Cg => {
                         cg.insert(speaker_idx)
                     }
-                    crate::spar_allocation::solve_allocation::Team::Co => {
+                    crate::spar_generation::allocation_problem::solve_allocation::Team::Co => {
                         co.insert(speaker_idx)
                     }
                 };

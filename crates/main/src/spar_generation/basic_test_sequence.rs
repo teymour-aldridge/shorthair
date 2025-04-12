@@ -3,12 +3,12 @@
 //! there is a model of the application (wired up to a fuzzer).
 
 use crate::auth::login::PasswordLoginForm;
-use crate::ballots::BpBallotForm;
-use crate::config_for_internals::{
+use crate::groups::CreateSparSeriesForm;
+use crate::spar_generation::ballots::BpBallotForm;
+use crate::spar_generation::config_for_internals::{
     ApproveJoinRequestForm, MakeSessionForm, Request2JoinSparSeriesForm,
 };
-use crate::groups::CreateSparSeriesForm;
-use crate::signup_for_spar::SignupForSpar;
+use crate::spar_generation::signup_for_spar::SignupForSpar;
 use crate::{
     auth::register::RegisterForm, groups::CreateGroupForm, make_rocket,
 };

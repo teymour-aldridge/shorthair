@@ -8,8 +8,8 @@ use diesel::prelude::*;
 use diesel::Connection;
 use maud::Markup;
 
-use crate::ballots::render_ballot;
 use crate::html::{error_404, page_of_body};
+use crate::spar_generation::ballots::render_ballot;
 
 #[get("/spar_series/<series_id>/results")]
 /// Displays the results of a spar series.

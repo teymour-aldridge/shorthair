@@ -1,5 +1,7 @@
 #![feature(coverage_attribute)]
 
+pub mod spar_generation;
+
 use account::account_page;
 use admin::setup::{do_setup, setup_page};
 use auth::{
@@ -9,12 +11,6 @@ use auth::{
     },
     logout,
     register::{do_register, register_page},
-};
-use ballots::{do_submit_ballot, submit_ballot_page, view_ballot};
-use config_for_internals::{
-    add_member_page, approve_join_request, do_add_member, do_make_session,
-    do_request2join_spar_series, internal_page, make_session_page,
-    request2join_spar_series_page,
 };
 use db::{user::User, DbConn};
 use diesel_migrations::{
@@ -33,11 +29,7 @@ use rocket::{
     },
     Build, Rocket,
 };
-use signup_for_spar::{
-    do_register_for_spar, do_spar_signup_search, register_for_spar_page,
-    spar_signup_search_page,
-};
-use spar_allocation::{
+use spar_generation::allocation_problem::{
     results::{results_of_spar_page, results_of_spar_series_page},
     routes::{
         do_mark_spar_complete, do_release_draw, generate_draw, set_is_open,
@@ -45,19 +37,25 @@ use spar_allocation::{
         single_spar_overview_for_participants_page,
     },
 };
+use spar_generation::ballots::{
+    do_submit_ballot, submit_ballot_page, view_ballot,
+};
+use spar_generation::config_for_internals::{
+    add_member_page, approve_join_request, do_add_member, do_make_session,
+    do_request2join_spar_series, internal_page, make_session_page,
+    request2join_spar_series_page,
+};
+use spar_generation::signup_for_spar::{
+    do_register_for_spar, do_spar_signup_search, register_for_spar_page,
+    spar_signup_search_page,
+};
 
 pub mod account;
 pub mod admin;
 pub mod auth;
-pub mod ballots;
-#[cfg(test)]
-pub mod basic_test_sequence;
-pub mod config_for_internals;
 pub mod groups;
 pub mod html;
 pub mod model;
-pub mod signup_for_spar;
-pub mod spar_allocation;
 pub mod tests;
 pub mod util;
 
