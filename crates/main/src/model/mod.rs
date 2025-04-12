@@ -119,5 +119,11 @@ mod regressions {
             ))
             .unwrap(),
         );
+        (runner)(
+            &serde_json::from_str(include_str!(
+                "testcases/fcb62ab95e1ae2f9.json"
+            ))
+            .unwrap(),
+        );
     }
 }
