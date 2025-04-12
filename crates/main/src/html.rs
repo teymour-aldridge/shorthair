@@ -13,7 +13,7 @@ pub fn page_of_body(body: Markup, user: Option<User>) -> Markup {
                 meta name="viewport" content="width=device-width, initial-scale=1" {}
             }
             body {
-                nav class="navbar navbar-expand" style="background-color: #dc3545" data-bs-theme="dark" {
+                nav class="navbar navbar-expand" style="background-color: #CB0BAA" data-bs-theme="dark" {
                     div class="container-fluid" {
                         ul class="nav nav-justify-start" data-bs-theme="dark" {
                             li class="nav-item" {

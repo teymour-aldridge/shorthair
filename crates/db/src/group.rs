@@ -47,10 +47,7 @@ impl Group {
     }
 
     pub fn validate_name(name: &str) -> bool {
-        name.chars().count() > 3
-            && name
-                .chars()
-                .all(|c| c.is_ascii() && (c.is_alphanumeric() || c.is_ascii()))
+        name.chars().count() < 32
     }
 }
 

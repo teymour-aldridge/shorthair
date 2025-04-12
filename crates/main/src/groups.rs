@@ -76,7 +76,8 @@ pub async fn do_create_group(
 
             if !Group::validate_name(&group.name) {
                 let markup = create_group_form(Some(
-                    "Error: that name is not valid."
+                    "Error: that name is not valid (group names may be at most
+                     32 characters long)."
                         .to_string(),
                 ));
                 return Ok(Either::Left(page_of_body(markup, Some(user))));
@@ -237,7 +238,9 @@ pub async fn new_internals_page(
                 div class="alert alert-info" role="alert" {
                     "Note: a spar series connects a number of spars together.
                      When generating a draw for a new spar in the series, only
-                     data from previous spars is used."
+                     data from previous spars"
+                     i {" in the same series "}
+                     "is used."
                 }
                 form method="POST" {
                     div class="mb-3" {
@@ -251,15 +254,6 @@ pub async fn new_internals_page(
                             "Description"
                         }
                         textarea name="description" type="text" class="form-control" id="description" {}
-                    }
-                    div class="mb-3" {
-                        // todo: remove this (as we currently only support BP)
-                        label for="speakers_per_team" class="form-label" {
-                            "Speakers per team (2 for Australs, 4 for BP).
-
-                            NOTE: Australs is not supported ."
-                        }
-                        input name="speakers_per_team" type="text" class="form-control" id="speakers_per_team" {}
                     }
                     button type="submit" class="btn btn-primary" { "Submit" }
                 }
@@ -277,7 +271,6 @@ pub async fn new_internals_page(
 pub struct CreateSparSeriesForm {
     pub title: String,
     pub description: Option<String>,
-    pub speakers_per_team: i64,
 }
 
 #[post("/groups/<group_id>/spar_series/new", data = "<form>")]
@@ -323,7 +316,8 @@ pub async fn do_create_spar_series(
                     spar_series::public_id.eq(public_id),
                     spar_series::title.eq(&form.title),
                     spar_series::description.eq(&form.description),
-                    spar_series::speakers_per_team.eq(form.speakers_per_team),
+                    // todo: add support for other formats, and then change this
+                    spar_series::speakers_per_team.eq(2),
                     spar_series::group_id.eq(group.id),
                     spar_series::created_at.eq(Utc::now().naive_utc()),
                     spar_series::allow_join_requests.eq(true),

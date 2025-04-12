@@ -111,8 +111,11 @@ fn login_with_password_form(error: Option<String>) -> maud::Markup {
                 button type="submit" class="btn btn-primary" { "Submit" }
                 p {
                     "If you prefer, you can "
+                    a href="/register" {
+                        "register for a new account "
+                    }
                     a href="/login/sans_password" {
-                        "create an account or log in without a password"
+                        "or log in via email"
                     }
                     "."
                 }

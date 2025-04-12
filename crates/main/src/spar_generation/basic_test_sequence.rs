@@ -112,7 +112,6 @@ fn basic_test_sequence() {
             serde_urlencoded::to_string(&CreateSparSeriesForm {
                 title: "Spar series".to_string(),
                 description: Some("The spar series".to_string()),
-                speakers_per_team: 2,
             })
             .unwrap(),
         )

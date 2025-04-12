@@ -1126,8 +1126,6 @@ impl State {
                                     description: spar_series
                                         .description
                                         .clone(),
-                                    // todo: remove this as we only support BP
-                                    speakers_per_team: 4,
                                 },
                             )
                             .unwrap(),
