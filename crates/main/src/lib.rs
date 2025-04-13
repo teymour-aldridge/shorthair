@@ -1,7 +1,5 @@
 #![feature(coverage_attribute)]
 
-pub mod spar_generation;
-
 use account::account_page;
 use admin::setup::{do_setup, setup_page};
 use auth::{
@@ -56,6 +54,9 @@ pub mod auth;
 pub mod groups;
 pub mod html;
 pub mod model;
+pub mod permissions;
+pub mod resources;
+pub mod spar_generation;
 pub mod tests;
 pub mod util;
 

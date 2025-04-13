@@ -14,7 +14,7 @@ use crate::html::page_of_body;
 pub async fn account_page(user: User, db: DbConn) -> Markup {
     db.run(|conn| {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            let groups = groups::table
+            let groups_user_belongs_to = groups::table
                 .inner_join(group_members::table)
                 .filter(group_members::user_id.eq(&user.id))
                 .select(groups::all_columns)
@@ -31,7 +31,7 @@ pub async fn account_page(user: User, db: DbConn) -> Markup {
                         }
                     }
                     tbody {
-                        @for group in groups {
+                        @for group in groups_user_belongs_to {
                             tr {
                                 th scope="row" {(group.name)}
                                 td {a href=(format!("/groups/{}", group.public_id)) {"View group"}}

@@ -2,7 +2,7 @@
 /// spars (for example, creating new spars, marking spars as complete, etc).
 use chrono::{NaiveDateTime, Utc};
 use db::{
-    group::{Group, GroupMember},
+    group::Group,
     schema::{
         group_members, groups, spar_series, spar_series_join_requests,
         spar_series_members, spars,
@@ -26,6 +26,7 @@ use uuid::Uuid;
 use crate::{
     html::{error_403, page_of_body},
     model::sync::id::gen_uuid,
+    permissions::{has_permission, Permission},
     util::is_valid_email,
 };
 
@@ -595,27 +596,14 @@ pub async fn join_requests_page(
                 None => return Ok(None),
             };
 
-            match group_members::table
-                .filter(group_members::group_id.eq(series.group_id))
-                .filter(group_members::user_id.eq(user.id))
-                .first::<GroupMember>(conn)
-                .optional()
-                .unwrap()
-            {
-                Some(membership)
-                    if membership.has_signing_power_bool
-                        | membership.is_admin =>
-                {
-                    ()
-                }
-                Some(_) | None => {
-                    return Ok(Some(error_403(
-                        Some(
-                            "Error: you are not authorized to view this group!",
-                        ),
-                        Some(user),
-                    )))
-                }
+            let required_permission = Permission::ModifyResourceInGroup(crate::resources::GroupRef(series.group_id));
+            if !has_permission(Some(&user), &required_permission, conn) {
+                return Ok(Some(error_403(
+                    Some(
+                        "Error: you are not authorized to view this group!",
+                    ),
+                    Some(user),
+                )))
             };
 
             let join_requests = spar_series_join_requests::table
@@ -682,27 +670,14 @@ pub async fn approve_join_request(
                 None => return Ok(None),
             };
 
-            match group_members::table
-                .filter(group_members::group_id.eq(series.group_id))
-                .filter(group_members::user_id.eq(user.id))
-                .first::<GroupMember>(conn)
-                .optional()
-                .unwrap()
-            {
-                Some(membership)
-                    if membership.has_signing_power_bool
-                        | membership.is_admin =>
-                {
-                    ()
-                }
-                Some(_) | None => {
-                    return Ok(Some(Err(error_403(
-                        Some(
-                            "Error: you are not authorized to view this group!",
-                        ),
-                        Some(user),
-                    ))))
-                }
+            let required_permission = Permission::ModifyResourceInGroup(
+                crate::resources::GroupRef(series.group_id),
+            );
+            if !has_permission(Some(&user), &required_permission, conn) {
+                return Ok(Some(Err(error_403(
+                    Some("Error: you are not authorized to view this group!"),
+                    Some(user),
+                ))));
             };
 
             let join_request = match spar_series_join_requests::table

@@ -467,7 +467,7 @@ impl State {
                 (user.id as usize, self.groups[group_id].clone()),
                 GroupMembershipData {
                     is_admin: member.is_admin,
-                    is_superuser: member.has_signing_power_bool,
+                    is_superuser: member.has_signing_power,
                 },
             );
         }

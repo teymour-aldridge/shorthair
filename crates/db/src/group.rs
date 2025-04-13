@@ -62,7 +62,7 @@ pub struct GroupMember {
     pub id: i64,
     pub group_id: i64,
     pub user_id: i64,
-    pub has_signing_power_bool: bool,
+    pub has_signing_power: bool,
     pub is_admin: bool,
 }
 
