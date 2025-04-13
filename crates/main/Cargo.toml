@@ -35,8 +35,8 @@ tempfile = "3.17.1"
 fuzzcheck = { git = "https://github.com/loiclec/fuzzcheck-rs" }
 parking_lot = "0.12.3"
 fuzzcheck-util = { version = "0.1.0", path = "../fuzzcheck-util" }
-smol = "2.0.2"
 skillratings = "0.27.1"
+tracing = { version = "0.1.41", features = ["log"] }
 
 [dependencies.rocket_sync_db_pools]
 features = ["diesel_sqlite_pool"]

@@ -80,3 +80,11 @@ pub fn error_404<T: ToString>(error: Option<T>, user: Option<User>) -> Markup {
         user,
     )
 }
+
+pub fn page_title<T: ToString>(title: T) -> Markup {
+    maud::html! {
+        div class="col-md m-3 h2 d-flex align-items-center" {
+            h1 { (title.to_string()) }
+        }
+    }
+}

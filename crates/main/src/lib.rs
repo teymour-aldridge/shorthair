@@ -27,25 +27,32 @@ use rocket::{
     },
     Build, Rocket,
 };
-use spar_generation::allocation_problem::{
-    results::{results_of_spar_page, results_of_spar_series_page},
-    routes::{
-        do_mark_spar_complete, do_release_draw, generate_draw, set_is_open,
-        show_draw_to_admin_page, single_spar_overview_for_admin_page,
-        single_spar_overview_for_participants_page,
-    },
-};
-use spar_generation::ballots::{
-    do_submit_ballot, submit_ballot_page, view_ballot,
-};
-use spar_generation::config_for_internals::{
+use spar_generation::spar_series_routes::{
     add_member_page, approve_join_request, do_add_member, do_make_session,
     do_request2join_spar_series, internal_page, make_session_page,
     request2join_spar_series_page,
 };
-use spar_generation::signup_for_spar::{
-    do_register_for_spar, do_spar_signup_search, register_for_spar_page,
-    spar_signup_search_page,
+use spar_generation::{
+    allocation_problem::{
+        results::{results_of_spar_page, results_of_spar_series_page},
+        routes::{
+            do_mark_spar_complete, do_release_draw, generate_draw, set_is_open,
+            show_draw_to_admin_page, single_spar_overview_for_admin_page,
+            single_spar_overview_for_participants_page,
+        },
+    },
+    spar_series_routes::join_requests_page,
+};
+use spar_generation::{
+    ballots::{do_submit_ballot, submit_ballot_page, view_ballot},
+    spar_series_routes::spar_series_member_overview,
+};
+use spar_generation::{
+    signup_for_spar::{
+        do_register_for_spar, do_spar_signup_search, register_for_spar_page,
+        spar_signup_search_page,
+    },
+    spar_series_routes::member_overview_page,
 };
 
 pub mod account;
@@ -159,8 +166,11 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 do_register,
                 request2join_spar_series_page,
                 do_request2join_spar_series,
+                do_mark_spar_complete,
+                join_requests_page,
                 approve_join_request,
-                do_mark_spar_complete
+                spar_series_member_overview,
+                member_overview_page
             ],
         )
 }

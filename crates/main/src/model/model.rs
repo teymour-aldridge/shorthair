@@ -29,8 +29,8 @@ use crate::{
     auth::login::PasswordLoginForm,
     groups::{CreateGroupForm, CreateSparSeriesForm},
     spar_generation::{
-        ballots::BpBallotForm, config_for_internals::MakeSessionForm,
-        signup_for_spar::SignupForSpar,
+        ballots::BpBallotForm, signup_for_spar::SignupForSpar,
+        spar_series_routes::MakeSessionForm,
     },
 };
 
@@ -1280,7 +1280,7 @@ impl State {
                         .header(ContentType::Form)
                         .body(
                             &serde_urlencoded::to_string(
-                                &crate::spar_generation::config_for_internals::AddMemberForm {
+                                &crate::spar_generation::spar_series_routes::AddMemberForm {
                                     name: spar_series_member.name.clone(),
                                     email: spar_series_member.email.clone(),
                                 },

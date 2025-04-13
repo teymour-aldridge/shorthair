@@ -73,13 +73,25 @@ pub async fn do_password_login(
                     if Argon2::default().verify_password(form.password.as_bytes(), &parsed_hash).is_ok() {
                         return (Err(Flash::new(Redirect::to("/login/sans_password"), "info", "You are now logged in.")), Some(user.id))
                     } else {
-                        return (Ok(login_with_password_form(Some("Incorrect password.".to_string()))), None)
+                        return (
+                            Ok(page_of_body(
+                                login_with_password_form(Some("Incorrect password.".to_string())),
+                                Some(user)
+                            )),
+                            None
+                        )
                     }
                 },
                 None => return (Err(Flash::new(Redirect::to("/login/sans_password"), "error", "You have not set a password. Please log in via email, and then set your password.")), None),
             },
             None => {
-                return (Ok(login_with_password_form(Some("No such user".to_string()))), None)
+                return (
+                    Ok(page_of_body(
+                        login_with_password_form(Some("No such user".to_string())),
+                        user
+                    )),
+                    None,
+                )
             }
         }
     })

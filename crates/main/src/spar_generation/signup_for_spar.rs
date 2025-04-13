@@ -4,8 +4,8 @@
 //! maliciously - or accidentally - modify other people's signups).
 
 use db::{
-    schema::{spar_series_members, spar_signups, spars},
-    spar::{Spar, SparSeriesMember, SparSignup},
+    schema::{spar_series, spar_series_members, spar_signups, spars},
+    spar::{Spar, SparSeries, SparSeriesMember, SparSignup},
     user::User,
     DbConn,
 };
@@ -31,10 +31,40 @@ pub async fn spar_signup_search_page(
             let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
                 .first::<Spar>(conn)
-                .optional()?;
+                .optional().unwrap();
 
-            Ok(spar.map(move |_| {
+            Ok(spar.map(move |spar| {
+                let series = spar_series::table
+                    .filter(spar_series::id.eq(spar.spar_series_id))
+                    .first::<SparSeries>(conn)
+                    .unwrap();
+
+                let join_request_link = if series.allow_join_requests {
+                    if series.auto_approve_join_requests {
+                        maud::html! {
+                            div class="alert alert-info" role="alert" {
+                                "If you are not a member of this spar group"
+                                a href=(format!("/spar_series/{}/request2join", series.public_id)) {
+                                    "you can join on this page."
+                                }
+                            }
+                        }
+                    } else {
+                        maud::html! {
+                            div class="alert alert-info" role="alert" {
+                                "If you are not a member of this series you can "
+                                a href=(format!("/spar_series/{}/request2join", series.public_id)) {
+                                    "request to join on this page."
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    maud::html!()
+                };
+
                 let markup = maud::html! {
+                    (join_request_link)
                     form method="post" {
                         div class="mb-3" {
                             label for="query" class="form-label" {

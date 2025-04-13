@@ -31,7 +31,10 @@ use qrcode::{render::svg, EcLevel, QrCode, Version};
 use rocket::response::{status::Unauthorized, Flash, Redirect};
 use uuid::Uuid;
 
-use crate::html::{error_403, error_404, page_of_body};
+use crate::{
+    html::{error_403, error_404, page_of_body},
+    permissions::{has_permission, Permission},
+};
 
 use super::{
     ratings,
@@ -84,16 +87,16 @@ fn spar_signup_status(spar: &Spar) -> Markup {
 /// maybe a tab for "draw/signups/etc" - can load data + check permissions and
 /// then pick the tab to load.
 pub async fn single_spar_overview_for_admin_page(
-    spar_id: String,
+    spar_id: &str,
     db: DbConn,
     user: User,
     tab: Option<SparAdminTab>,
 ) -> Option<Result<Markup, Unauthorized<()>>> {
+    let spar_id = spar_id.to_string();
     db.run(move |conn| {
         conn.transaction::<_, diesel::result::Error, _>(move |conn| {
-            let sid = spar_id.clone();
             let spar = spars::table
-                .filter(spars::public_id.eq(sid))
+                .filter(spars::public_id.eq(&spar_id))
                 .get_result::<Spar>(conn)
                 .optional()
                 .unwrap();
@@ -107,24 +110,14 @@ pub async fn single_spar_overview_for_admin_page(
 
             let spar_series = spar_series::table.filter(spar_series::id.eq(spar.id))
                 .first::<SparSeries>(conn)?;
-            let user_id = user.id;
-            let user_has_permission = select(exists(
-                spar_series::table
-                    .filter(spar_series::id.eq(spar.spar_series_id))
-                    .inner_join(groups::table.inner_join(group_members::table))
-                    .filter(group_members::user_id.eq(user_id))
-                    .filter(
-                        group_members::is_admin
-                            .eq(true)
-                            .or(group_members::has_signing_power.eq(true)),
-                    ),
-            ))
-            .get_result::<bool>(conn)
-            .unwrap();
 
+            let user_has_permission = has_permission(Some(&user), &Permission::ModifyResourceInGroup(crate::resources::GroupRef(spar_series.group_id)), conn);
             if !user_has_permission {
+                rocket::info!("User with id {} unauthorized.", user.id);
                 return Ok(Some(Err(Unauthorized(()))));
             }
+
+            rocket::info!("User with id {} authorized.", user.id);
 
             let page = match tab {
                 Some(SparAdminTab::Draw) | None => {
@@ -186,7 +179,11 @@ pub async fn single_spar_overview_for_admin_page(
                             system before they may join. You can do so "
                             a
                                 href=(format!("/spar_series/{}/add_member", spar_series.public_id)) {
-                                    "on the add members page."
+                                    "on the add members page"
+                                }
+                                " or "
+                                a href=(format!("/spar_series/{}/join_requests", spar_series.public_id)) {
+                                    "approve existing members."
                                 }
                         }
                         (spar_signup_status(&spar))
@@ -272,8 +269,9 @@ pub async fn single_spar_overview_for_admin_page(
 pub async fn single_spar_overview_for_participants_page(
     user: Option<User>,
     db: DbConn,
-    spar_id: String,
+    spar_id: &str,
 ) -> Option<Markup> {
+    let spar_id = spar_id.to_string();
     db.run(move |conn| {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
@@ -296,8 +294,16 @@ pub async fn single_spar_overview_for_participants_page(
 
                 let ballots = ballots_of_rooms(&draw_info, conn)?;
 
-                let markup = render_draw(draw_info, ballots);
-                Ok(Some(page_of_body(markup, user)))
+                if draw_info.is_empty() {
+                    Ok(Some(page_of_body(maud::html! {
+                        div class="alert alert-info" {
+                            b { "The draw for this spar has not been released yet." }
+                        }
+                    }, user)))
+                } else {
+                    let markup = render_draw(draw_info, ballots);
+                    Ok(Some(page_of_body(markup, user)))
+                }
             } else {
                 Ok(None)
             }
@@ -312,9 +318,10 @@ pub async fn single_spar_overview_for_participants_page(
 pub async fn set_is_open(
     db: DbConn,
     user: User,
-    spar_id: String,
+    spar_id: &str,
     state: bool,
 ) -> Option<Markup> {
+    let spar_id = spar_id.to_string();
     db.run(move |conn| {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
@@ -379,9 +386,10 @@ pub async fn set_is_open(
 /// TODO: we ideally want a way to preview the new draw before adopting it.
 pub async fn generate_draw(
     user: User,
-    session_id: String,
+    session_id: &str,
     db: DbConn,
 ) -> Option<Result<Flash<Redirect>, Unauthorized<()>>> {
+    let session_id = session_id.to_string();
     let db = Arc::new(db);
     db.clone().run(move |conn| {
         conn.transaction(move |conn| {
@@ -471,8 +479,6 @@ pub async fn generate_draw(
                     ))
                     .returning(spar_rooms::id)
                     .get_result::<i64>(conn)?;
-
-
 
                 for adj in room.panel {
                     let adj_signup = &signups[&adj];

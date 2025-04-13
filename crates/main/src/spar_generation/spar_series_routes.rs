@@ -21,10 +21,11 @@ use rocket::{
     response::{status::Unauthorized, Redirect},
 };
 use serde::{Deserialize, Serialize};
+use tracing::Level;
 use uuid::Uuid;
 
 use crate::{
-    html::{error_403, page_of_body},
+    html::{error_403, page_of_body, page_title},
     model::sync::id::gen_uuid,
     permissions::{has_permission, Permission},
     util::is_valid_email,
@@ -74,7 +75,9 @@ pub async fn internal_page(
                     @if let Some(description) = &spar_series.description {
                         p { (description) }
                     }
-                    a href=(format!("/spar_series/{}/makesess", spar_series.public_id)) type="button" class="btn btn-primary" { "Create new session" }
+                    a href=(format!("/spar_series/{}/members", spar_series.public_id)) type="button" class="btn btn-primary m-1" { "Member overview" }
+                    a href=(format!("/spar_series/{}/join_requests", spar_series.public_id)) type="button" class="btn btn-primary m-1" { "Manage join requests" }
+                    a href=(format!("/spar_series/{}/makesess", spar_series.public_id)) type="button" class="btn btn-primary m-1" { "Create new session" }
                     table class="table" {
                         thead {
                             tr {
@@ -612,31 +615,45 @@ pub async fn join_requests_page(
                 .load::<SparSeriesMember>(conn)
                 .unwrap();
 
-            let markup = html! {
-                h1 { "Join Requests" }
-                table class="table" {
-                    thead {
-                        tr {
-                            th scope="col" { "Name" }
-                            th scope="col" { "Email" }
-                            th scope="col" { "Request Date" }
-                            th scope="col" { "Actions" }
-                        }
-                    }
-                    tbody {
-                        @for request in join_requests {
+            let table = if !join_requests.is_empty() {
+                html! {
+                    table class="table" {
+                        thead {
                             tr {
-                                td { (request.name) }
-                                td { (request.email) }
-                                td { (request.created_at.format("%Y-%m-%d %H:%M:%S")) }
-                                td {
-                                    input type="hidden" name="id" value=(request.public_id);
-                                    button type="submit" class="btn btn-success btn-link text-decoration-none" style="color: #198754" { "Approve" }
+                                th scope="col" { "Name" }
+                                th scope="col" { "Email" }
+                                th scope="col" { "Request Date" }
+                                th scope="col" { "Actions" }
+                            }
+                        }
+                        tbody {
+                            @for request in join_requests {
+                                tr {
+                                    td { (request.name) }
+                                    td { (request.email) }
+                                    td { (request.created_at.format("%Y-%m-%d %H:%M:%S")) }
+                                    td {
+                                        form method="post" action=(format!("/spar_series/{}/approve_join_request", series.public_id)) {
+                                            input type="hidden" name="id" value=(request.public_id);
+                                            button type="submit" class="btn btn-success btn-link text-decoration-none" style="color: #198754" { "Approve" }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+            } else {
+                html! {
+                    p {
+                        "There are currently no join requests."
+                    }
+                }
+            };
+
+            let markup = html! {
+                h1 { "Join Requests" }
+                (table)
             };
 
             Ok(Some(page_of_body(markup, Some(user))))
@@ -674,11 +691,22 @@ pub async fn approve_join_request(
                 crate::resources::GroupRef(series.group_id),
             );
             if !has_permission(Some(&user), &required_permission, conn) {
+                tracing::event!(
+                    Level::INFO,
+                    "User with id {} unauthorized.",
+                    user.id
+                );
                 return Ok(Some(Err(error_403(
                     Some("Error: you are not authorized to view this group!"),
                     Some(user),
                 ))));
             };
+
+            tracing::event!(
+                Level::INFO,
+                "User with id {} was authorized.",
+                user.id
+            );
 
             let join_request = match spar_series_join_requests::table
                 .filter(
@@ -693,6 +721,8 @@ pub async fn approve_join_request(
                 None => return Ok(None),
             };
 
+            rocket::info!("Found join request with id {}.", join_request.id);
+
             let n_inserted = insert_into(spar_series_members::table)
                 .values((
                     spar_series_members::public_id.eq(gen_uuid().to_string()),
@@ -706,9 +736,174 @@ pub async fn approve_join_request(
                 .unwrap();
             assert_eq!(n_inserted, 1);
 
+            rocket::info!(
+                "Added creation of spar series member to transaction.",
+            );
+
+            let n_deleted = diesel::delete(
+                spar_series_join_requests::table
+                    .filter(spar_series_join_requests::id.eq(join_request.id)),
+            )
+            .execute(conn)
+            .unwrap();
+            assert_eq!(n_deleted, 1);
+
+            rocket::info!(
+                "Added deletion for join request with id {} to transaction.",
+                join_request.id
+            );
+
             Ok(Some(Ok(Redirect::to(format!(
                 "/spar_series/{spar_series_id}/join_requests"
             )))))
+        })
+        .unwrap()
+    })
+    .await
+}
+
+#[get("/spar_series/<spar_series_id>/members")]
+pub async fn member_overview_page(
+    db: DbConn,
+    spar_series_id: &str,
+    user: User,
+) -> Option<Markup> {
+    let spar_series_id = spar_series_id.to_string();
+    db.run(move |conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let series = match spar_series::table
+                .filter(spar_series::public_id.eq(&spar_series_id))
+                .first::<SparSeries>(conn)
+                .optional()
+                .unwrap()
+            {
+                Some(s) => s,
+                None => return Ok(None),
+            };
+
+            let required_permission = Permission::ModifyResourceInGroup(
+                crate::resources::GroupRef(series.group_id),
+            );
+            if !has_permission(Some(&user), &required_permission, conn) {
+                return Ok(Some(error_403(
+                    Some("Error: you are not authorized to view this group!"),
+                    Some(user),
+                )));
+            };
+
+            rocket::info!(
+                "User {} is authorized to view the member list.",
+                user.id
+            );
+
+            let members = spar_series_members::table
+                .filter(spar_series_members::spar_series_id.eq(series.id))
+                .load::<SparSeriesMember>(conn)
+                .unwrap();
+
+            let table = if !members.is_empty() {
+                html! {
+                    table class="table" {
+                        thead {
+                            tr {
+                                th scope="col" { "Name" }
+                                th scope="col" { "Email" }
+                                th scope="col" { "Join Date" }
+                                th scope="col" { "Edit" }
+                            }
+                        }
+                        tbody {
+                            @for member in members {
+                                tr {
+                                    td { (member.name) }
+                                    td { (member.email) }
+                                    td { (member.created_at.format("%Y-%m-%d %H:%M:%S")) }
+                                    td {
+                                        a href=(format!("/spar_series/{spar_series_id}/members/{}", member.public_id)) {
+                                            "Edit member"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                html! {
+                    p { "There are currently no members in this spar series." }
+                }
+            };
+
+            let markup = html! {
+                h1 { "Members" }
+                (table)
+            };
+
+            Ok(Some(page_of_body(markup, Some(user))))
+        })
+        .unwrap()
+    })
+    .await
+}
+
+#[get("/spar_series/<spar_series_id>/members/<spar_member_id>")]
+pub async fn spar_series_member_overview(
+    spar_series_id: &str,
+    spar_member_id: &str,
+    db: DbConn,
+    user: User,
+) -> Option<Markup> {
+    let spar_series_id = spar_series_id.to_string();
+    let spar_member_id = spar_member_id.to_string();
+
+    db.run(move |conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let series = match spar_series::table
+                .filter(spar_series::public_id.eq(&spar_series_id))
+                .first::<SparSeries>(conn)
+                .optional()
+                .unwrap()
+            {
+                Some(s) => s,
+                None => return Ok(None),
+            };
+
+            let required_permission = Permission::ModifyResourceInGroup(
+                crate::resources::GroupRef(series.group_id),
+            );
+            if !has_permission(Some(&user), &required_permission, conn) {
+                return Ok(Some(error_403(
+                    Some("Error: you are not authorized to view this group!"),
+                    Some(user),
+                )));
+            };
+
+            let member = match spar_series_members::table
+                .filter(spar_series_members::public_id.eq(spar_member_id))
+                .filter(spar_series_members::spar_series_id.eq(series.id))
+                .first::<SparSeriesMember>(conn)
+                .optional()
+                .unwrap()
+            {
+                Some(m) => m,
+                // todo: better error message
+                None => return Ok(None),
+            };
+
+            let markup = html! {
+                (page_title(format!("Record for {}", member.name)))
+                div class="card" style="width: 50%;" {
+                    div class="card-body" {
+                        h5 class="card-title" { "About " (member.name) }
+                        h6 class="card-subtitle mb-2 text-body-secondary" { (member.email) }
+                        p class="card-text" {
+                            "Member since: " (member.created_at.format("%Y-%m-%d %H:%M:%S"))
+                        }
+                    }
+                }
+            };
+
+            Ok(Some(page_of_body(markup, Some(user))))
         })
         .unwrap()
     })

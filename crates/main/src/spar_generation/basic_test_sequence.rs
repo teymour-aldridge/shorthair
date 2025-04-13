@@ -5,10 +5,10 @@
 use crate::auth::login::PasswordLoginForm;
 use crate::groups::CreateSparSeriesForm;
 use crate::spar_generation::ballots::BpBallotForm;
-use crate::spar_generation::config_for_internals::{
+use crate::spar_generation::signup_for_spar::SignupForSpar;
+use crate::spar_generation::spar_series_routes::{
     ApproveJoinRequestForm, MakeSessionForm, Request2JoinSparSeriesForm,
 };
-use crate::spar_generation::signup_for_spar::SignupForSpar;
 use crate::{
     auth::register::RegisterForm, groups::CreateGroupForm, make_rocket,
 };
