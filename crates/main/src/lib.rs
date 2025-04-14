@@ -1,6 +1,6 @@
 #![feature(coverage_attribute)]
 
-use account::account_page;
+use accounts::account_page;
 use admin::setup::{do_setup, setup_page};
 use auth::{
     login::{
@@ -19,6 +19,7 @@ use groups::{
     new_internals_page, view_groups,
 };
 use html::page_of_body;
+use request_ids::RequestIdFairing;
 use rocket::{
     fairing::AdHoc,
     figment::{
@@ -55,13 +56,14 @@ use spar_generation::{
     spar_series_routes::member_overview_page,
 };
 
-pub mod account;
+pub mod accounts;
 pub mod admin;
 pub mod auth;
 pub mod groups;
 pub mod html;
 pub mod model;
 pub mod permissions;
+pub mod request_ids;
 pub mod resources;
 pub mod spar_generation;
 pub mod tests;
@@ -173,4 +175,5 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 member_overview_page
             ],
         )
+        .attach(RequestIdFairing)
 }

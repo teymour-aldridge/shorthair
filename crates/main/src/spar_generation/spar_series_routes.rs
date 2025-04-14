@@ -21,7 +21,6 @@ use rocket::{
     response::{status::Unauthorized, Redirect},
 };
 use serde::{Deserialize, Serialize};
-use tracing::Level;
 use uuid::Uuid;
 
 use crate::{
@@ -691,22 +690,14 @@ pub async fn approve_join_request(
                 crate::resources::GroupRef(series.group_id),
             );
             if !has_permission(Some(&user), &required_permission, conn) {
-                tracing::event!(
-                    Level::INFO,
-                    "User with id {} unauthorized.",
-                    user.id
-                );
+                rocket::info!("User with id {} unauthorized.", user.id);
                 return Ok(Some(Err(error_403(
                     Some("Error: you are not authorized to view this group!"),
                     Some(user),
                 ))));
             };
 
-            tracing::event!(
-                Level::INFO,
-                "User with id {} was authorized.",
-                user.id
-            );
+            rocket::info!("User with id {} was authorized.", user.id);
 
             let join_request = match spar_series_join_requests::table
                 .filter(
