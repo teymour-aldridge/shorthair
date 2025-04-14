@@ -1,3 +1,4 @@
+use db::user::User;
 use rocket::{
     fairing::{Fairing, Info, Kind},
     request::{self, FromRequest, Request},
@@ -55,9 +56,24 @@ impl Fairing for RequestIdFairing {
 
     async fn on_request(&self, req: &mut Request<'_>, _data: &mut Data<'_>) {
         let request_id = req.guard::<RequestId>().await;
+        let user = req.guard::<Option<User>>().await;
 
         let _ = request_id.map(|request_id| {
-            rocket::info!("Incoming request with ID {}", request_id.0)
+            let _ = user.map(|user| {
+                if let Some(user) = user {
+                    rocket::info!(
+                        "Incoming request with ID {} (authenticated user with id `{}` and public id `{}`)",
+                        request_id.0,
+                        user.id,
+                        user.public_id
+                    )
+                } else {
+                    rocket::info!(
+                        "Incoming request with ID {} (not authenticated)",
+                        request_id.0,
+                    )
+                }
+            });
         });
     }
 

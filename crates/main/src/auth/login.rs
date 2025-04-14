@@ -20,7 +20,6 @@ use rocket::{
     response::{Flash, Redirect},
 };
 use serde::Serialize;
-use uuid::Uuid;
 
 use crate::{html::page_of_body, util::short_random};
 
@@ -179,89 +178,85 @@ pub async fn do_login(
         ));
     };
 
-    let (user, code) = db
+    let db = Arc::new(db);
+
+    let response = db
+        .clone()
         .run(move |conn| {
-            let user: Option<User> = users::table
-                .filter(users::email.eq(login.email.clone()))
-                .first(conn)
-                .optional()
-                .unwrap();
-
-            let user = if let Some(u) = user {
-                u
-            } else {
-                let pid = Uuid::now_v7().to_string();
-
-                let query = diesel::insert_into(users::table).values((
-                    users::public_id.eq(&pid),
-                    users::username.eq(None::<&str>),
-                    users::email.eq(&login.email),
-                    users::created_at.eq(Utc::now().naive_utc()),
-                    users::email_verified.eq(false),
-                    users::is_superuser.eq(false),
-                ));
-                let n = query.execute(conn).unwrap();
-                assert_eq!(n, 1);
-                let user = users::table
-                    .filter(User::with_public_id(&pid))
+            conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+                let user: Option<User> = users::table
+                    .filter(users::email.eq(login.email.clone()))
                     .first(conn)
+                    .optional()
                     .unwrap();
-                user
-            };
 
-            let code = short_random(32);
-            let now = Utc::now().naive_utc();
-            let expiry = now + chrono::Duration::minutes(30);
-            let n = diesel::insert_into(magic_links::table)
-                .values((
-                    magic_links::code.eq(&code),
-                    magic_links::user_id.eq(user.id),
-                    magic_links::created_at.eq(now),
-                    magic_links::expires_at.eq(expiry),
-                    already_used.eq(false),
-                ))
-                .execute(conn)
-                .unwrap();
-            assert_eq!(n, 1);
-            (user, code)
+                let user = if let Some(u) = user {
+                    u
+                } else {
+                    return Ok(Err(Flash::error(
+                        Redirect::to("/register"),
+                        "Please register first!",
+                    )));
+                };
+
+                let code = short_random(32);
+                let now = Utc::now().naive_utc();
+                let expiry = now + chrono::Duration::minutes(30);
+                let n = diesel::insert_into(magic_links::table)
+                    .values((
+                        magic_links::code.eq(&code),
+                        magic_links::user_id.eq(user.id),
+                        magic_links::created_at.eq(now),
+                        magic_links::expires_at.eq(expiry),
+                        already_used.eq(false),
+                    ))
+                    .execute(conn)
+                    .unwrap();
+                assert_eq!(n, 1);
+
+                let name =
+                    user.username.unwrap_or("[unnamed user]".to_string());
+                // todo: the setup view should allow users to configure the link used for
+                // this site
+                //
+                // (to avoid hitting the database we can also consider using a global
+                //  RwLock to store this location)
+                let login_code =
+                    format!("https://eldemite.net/login/code/{code}");
+
+                let html = maud::html! {
+                    p { "Dear " (name) "," }
+                    p {
+                        "Please use this link to login to eldemite.net"
+                        a href = (login_code) { (login_code) }
+                    }
+                };
+
+                let text = format!(
+                    r#"Dear {},
+
+                    Please use this link to log in to eldemite.net
+
+                    {}
+                    "#,
+                    name, login_code
+                );
+
+                send_mail(
+                    vec![(&name, &user.email)],
+                    "Login code for eldemite.net",
+                    &html.into_string(),
+                    &text,
+                    db,
+                );
+
+                return Ok(Ok(Redirect::to("/login/check_email")));
+            })
+            .unwrap()
         })
         .await;
 
-    let name = user.username.unwrap_or("[unnamed user]".to_string());
-    // todo: the setup view should allow users to configure the link used for
-    // this site
-    //
-    // (to avoid hitting the database we can also consider using a global
-    //  RwLock to store this location)
-    let login_code = format!("https://eldemite.net/login/code/{code}");
-
-    let html = maud::html! {
-        p { "Dear " (name) "," }
-        p {
-            "Please use this link to login to eldemite.net"
-            a href = (login_code) { (login_code) }
-        }
-    };
-
-    let text = format!(
-        r#"Dear {},
-
-        Please use this link to log in to eldemite.net
-
-        {}
-        "#,
-        name, login_code
-    );
-
-    send_mail(
-        vec![(&name, &user.email)],
-        "Login code for shorthair",
-        &html.into_string(),
-        &text,
-        Arc::new(db),
-    );
-
-    return Ok(Redirect::to("/login/check_email"));
+    response
 }
 
 #[get("/login/check_email")]

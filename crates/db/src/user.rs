@@ -39,6 +39,9 @@ pub struct User {
     #[field_mutator(NaiveDateTimeMutator = { naive_date_time_mutator() })]
     pub created_at: NaiveDateTime,
     pub is_superuser: bool,
+    // todo: what resources should this restrict? Currently this just suspends
+    // groups
+    pub may_create_resources: bool,
 }
 
 type WithName<'a> =
@@ -131,7 +134,7 @@ impl<'r> FromRequest<'r> for User {
                 }
             };
 
-        let user = match db
+        let user: Option<User> = match db
             .run(move |conn| {
                 schema::users::table
                     .filter(schema::users::id.eq(login.id))

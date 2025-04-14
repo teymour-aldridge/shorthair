@@ -9,10 +9,36 @@ use rand::rngs::OsRng;
 use rocket::{form::Form, response::Redirect};
 use serde::Serialize;
 
-use crate::{html::page_of_body, model::sync::id::gen_uuid};
+use crate::{
+    html::{page_of_body, page_title},
+    model::sync::id::gen_uuid,
+    permissions::{has_permission, Permission},
+};
 
 #[get("/register")]
-pub async fn register_page(user: Option<User>) -> Result<Markup, Redirect> {
+pub async fn register_page(
+    user: Option<User>,
+    db: DbConn,
+) -> Result<Markup, Redirect> {
+    if db
+        .run(|conn| !has_permission(None, &Permission::RegisterAsNewUser, conn))
+        .await
+    {
+        // todo: should return a non-200 status code
+        return Ok(page_of_body(
+            maud::html! {
+                (page_title("Signups are currently disabled!"))
+                div class="m-3" {
+                    p {
+                        "This site is currently in a closed invite-only beta."
+                    }
+                }
+
+            },
+            None,
+        ));
+    }
+
     if user.is_some() {
         // todo: add flash message
         return Err(Redirect::to("/profile"));
@@ -67,7 +93,18 @@ pub async fn do_register(
 ) -> Result<Redirect, Markup> {
     db.run(move |conn| {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            // todo: validate the username/email
+            if !has_permission(None, &Permission::RegisterAsNewUser, conn) {
+                return Ok(Err(page_of_body(
+                    maud::html! {
+                        (page_title("Signups are currently disabled!"))
+                        p {
+                            "Please ask the system administrator to enable
+                             them, or create an account for you."
+                        }
+                    },
+                    None,
+                )));
+            }
 
             if form.password != form.password2 {
                 return Ok(Err(register_form(

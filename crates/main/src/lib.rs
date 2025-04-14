@@ -1,7 +1,10 @@
 #![feature(coverage_attribute)]
 
 use accounts::account_page;
-use admin::setup::{do_setup, setup_page};
+use admin::{
+    config::{config_page, do_upsert_config, edit_existing_config_item_page},
+    setup::{do_setup, setup_page},
+};
 use auth::{
     login::{
         check_email_page, confirm_login_with_code, do_login,
@@ -172,7 +175,10 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 join_requests_page,
                 approve_join_request,
                 spar_series_member_overview,
-                member_overview_page
+                member_overview_page,
+                config_page,
+                edit_existing_config_item_page,
+                do_upsert_config
             ],
         )
         .attach(RequestIdFairing)

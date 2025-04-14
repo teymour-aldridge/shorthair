@@ -109,8 +109,8 @@ pub async fn do_setup(
 
             if !User::validate_username(&form.username) {
                 return Ok(Err(setup_page_form(Some(
-                    "Error: names must consist exclusively of letters from the
-                     latin alphabet."
+                    "Error: usernames must only consist of ASCII characters,
+                     and may _not_ contain spaces!"
                         .to_string(),
                 ))));
             }
@@ -145,8 +145,10 @@ pub async fn do_setup(
                     users::is_superuser.eq(true),
                     users::created_at.eq(diesel::dsl::now),
                     users::email_verified.eq(false),
+                    users::may_create_resources.eq(true),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .unwrap();
             assert_eq!(n, 1);
 
             // todo: send welcome email (?)

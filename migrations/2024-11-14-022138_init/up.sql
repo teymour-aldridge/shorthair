@@ -1,3 +1,17 @@
+-- This stores a dictionary of configuration options.
+--
+-- Example items
+-- key: "disable_signups", possible values: {"0", "1"}
+--
+-- All values are nullable (if no matching key exists we proceed, assuming that
+-- the configuration value is null).
+create table if not exists config (
+    id integer primary key not null,
+    public_id text not null unique,
+    "key" text not null unique,
+    value text not null
+);
+
 create table if not exists users (
     id integer primary key not null,
     public_id text not null unique,
@@ -6,7 +20,22 @@ create table if not exists users (
     email_verified boolean not null,
     password_hash text,
     created_at timestamp not null,
-    is_superuser boolean not null
+    is_superuser boolean not null,
+    -- specifies whether a user may create resources
+    may_create_resources boolean not null
+    -- todo: make it possible to suspend users
+);
+
+-- If registration is disabled, users may still join if they are invited. This
+-- exists to make private instances managable.
+create table if not exists account_invites (
+    id integer primary key not null,
+    public_id text not null unique,
+    code text not null unique,
+    email text not null unique,
+    sent_by integer not null,
+    created_at timestamp not null,
+    foreign key (sent_by) references users (id)
 );
 
 create table if not exists magic_links (
@@ -88,7 +117,9 @@ create table if not exists spar_series_members (
     email text not null,
     spar_series_id integer not null,
     created_at timestamp not null,
-    foreign key (spar_series_id) references spar_series (id)
+    foreign key (spar_series_id) references spar_series (id),
+    unique (spar_series_id, name),
+    unique (spar_series_id, email)
 );
 
 -- full text search for the spar series members

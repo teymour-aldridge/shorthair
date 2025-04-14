@@ -1,6 +1,17 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    account_invites (id) {
+        id -> BigInt,
+        public_id -> Text,
+        code -> Text,
+        email -> Text,
+        sent_by -> BigInt,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     adjudicator_ballot_entries (id) {
         id -> BigInt,
         public_id -> Text,
@@ -19,6 +30,15 @@ diesel::table! {
         adjudicator_id -> BigInt,
         room_id -> BigInt,
         created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    config (id) {
+        id -> BigInt,
+        public_id -> Text,
+        key -> Text,
+        value -> Text,
     }
 }
 
@@ -181,9 +201,11 @@ diesel::table! {
         password_hash -> Nullable<Text>,
         created_at -> Timestamp,
         is_superuser -> Bool,
+        may_create_resources -> Bool,
     }
 }
 
+diesel::joinable!(account_invites -> users (sent_by));
 diesel::joinable!(adjudicator_ballot_entries -> adjudicator_ballots (ballot_id));
 diesel::joinable!(adjudicator_ballot_entries -> spar_speakers (speaker_id));
 diesel::joinable!(adjudicator_ballot_entries -> spar_teams (team_id));
@@ -208,8 +230,10 @@ diesel::joinable!(spar_teams -> spar_rooms (room_id));
 diesel::joinable!(spars -> spar_series (spar_series_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    account_invites,
     adjudicator_ballot_entries,
     adjudicator_ballots,
+    config,
     emails,
     group_members,
     groups,
