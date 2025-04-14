@@ -114,8 +114,13 @@ fn send_mail_internal(
         std::env::var("SMTP_DOMAIN").unwrap()
     );
 
+    let domain = std::env::var("SMTP_DOMAIN")
+        .unwrap_or_else(|_| "example.com".to_string());
+
     let msg = msg
         .message_id(Some(msg_id.to_string()))
+        .subject(subject)
+        .from(format!("bureaucrat@{domain}").parse().unwrap())
         .multipart(
             MultiPart::mixed()
                 .singlepart(
