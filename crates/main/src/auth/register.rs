@@ -150,6 +150,7 @@ pub async fn do_register(
                     users::created_at.eq(now),
                     users::password_hash.eq(&password_hash),
                     users::is_superuser.eq(false),
+                    users::may_create_resources.eq(true),
                 ))
                 .execute(conn)
                 .unwrap();
