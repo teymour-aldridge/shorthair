@@ -578,11 +578,8 @@ impl State {
         match action {
             Action::Setup(user) => {
                 if self.users.is_empty() {
-                    if user.password_hash.is_some()
-                        && user.username.is_some()
-                        && User::validate_password(
-                            user.password_hash.as_ref().unwrap(),
-                        )
+                    if user.username.is_some()
+                        && User::validate_password(&user.password_hash)
                         && User::validate_email(&user.email)
                         && User::validate_username(
                             user.username.as_ref().unwrap(),
@@ -606,7 +603,6 @@ impl State {
                     let clamped =
                         (*user).clamp(0, self.users.len().saturating_sub(1));
                     let user = &self.users[clamped];
-                    assert!(user.password_hash.is_some());
                     self.active_user = Some(user.clone());
                 }
             }
@@ -1053,44 +1049,38 @@ impl State {
         match action {
             Action::Setup(user) => {
                 if let Some(username) = &user.username {
-                    if let Some(password) = &user.password_hash {
-                        {
-                            self.client
-                                .post("/admin/setup")
-                                .header(ContentType::Form)
-                                .body(
-                                    serde_urlencoded::to_string(&SetupForm {
-                                        username: username.clone(),
-                                        email: user.email.clone(),
-                                        password: password.clone(),
-                                        password2: password.clone(),
-                                    })
-                                    .unwrap(),
-                                )
-                                .dispatch();
-                        };
-                    }
+                    let password = &user.password_hash;
+                    self.client
+                        .post("/admin/setup")
+                        .header(ContentType::Form)
+                        .body(
+                            serde_urlencoded::to_string(&SetupForm {
+                                username: username.clone(),
+                                email: user.email.clone(),
+                                password: password.clone(),
+                                password2: password.clone(),
+                            })
+                            .unwrap(),
+                        )
+                        .dispatch();
                 }
             }
             Action::Login(user) => {
                 let clamped =
                     (*user).clamp(0, self.users.len().saturating_sub(1));
                 if let Some(user) = self.users.get(clamped) {
-                    if let Some(password) = &user.password_hash {
-                        self.client
-                            .post("/login")
-                            .header(ContentType::Form)
-                            .body(
-                                serde_urlencoded::to_string(
-                                    &PasswordLoginForm {
-                                        email: user.email.clone(),
-                                        password: password.clone(),
-                                    },
-                                )
-                                .unwrap(),
-                            )
-                            .dispatch();
-                    }
+                    let password = &user.password_hash;
+                    self.client
+                        .post("/login")
+                        .header(ContentType::Form)
+                        .body(
+                            serde_urlencoded::to_string(&PasswordLoginForm {
+                                email: user.email.clone(),
+                                password: password.clone(),
+                            })
+                            .unwrap(),
+                        )
+                        .dispatch();
                 }
             }
             Action::CreateGroup(group) => {

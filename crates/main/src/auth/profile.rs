@@ -47,49 +47,39 @@ pub async fn do_set_password(
         .unwrap()
         .to_string();
 
-    if user.password_hash.is_none() {
-        db.run(|conn| {
-            update(users::table)
-                .set((users::password_hash.eq(new_password_hash),))
-                .execute(conn)
-                .unwrap()
-        })
-        .await;
-    } else {
-        if form.old_password.is_none() {
-            return Ok(auth_profile_page(
-                Some(user),
-                Some("You have not specified the old password.".to_string()),
-            ));
-        }
-
-        let pwdhash = user.password_hash.as_ref().unwrap();
-        let old_password_matches = argon2
-            .verify_password(
-                form.old_password.as_ref().unwrap().as_bytes(),
-                &PasswordHash::new(&pwdhash).unwrap(),
-            )
-            .is_ok();
-
-        if !old_password_matches {
-            return Ok(auth_profile_page(
-                Some(user),
-                Some(
-                    "The provided old password does not match your
-                      actual, current, password."
-                        .to_string(),
-                ),
-            ));
-        }
-
-        db.run(|conn| {
-            update(users::table)
-                .set((users::password_hash.eq(new_password_hash),))
-                .execute(conn)
-                .unwrap()
-        })
-        .await;
+    if form.old_password.is_none() {
+        return Ok(auth_profile_page(
+            Some(user),
+            Some("You have not specified the old password.".to_string()),
+        ));
     }
+
+    let pwdhash = &user.password_hash;
+    let old_password_matches = argon2
+        .verify_password(
+            form.old_password.as_ref().unwrap().as_bytes(),
+            &PasswordHash::new(&pwdhash).unwrap(),
+        )
+        .is_ok();
+
+    if !old_password_matches {
+        return Ok(auth_profile_page(
+            Some(user),
+            Some(
+                "The provided old password does not match your
+                      actual, current, password."
+                    .to_string(),
+            ),
+        ));
+    }
+
+    db.run(|conn| {
+        update(users::table)
+            .set((users::password_hash.eq(new_password_hash),))
+            .execute(conn)
+            .unwrap()
+    })
+    .await;
 
     Err(Redirect::to("/profile/auth"))
 }

@@ -34,8 +34,8 @@ pub struct User {
     #[field_mutator(UsefulStringMutator = { useful_string_mutator() })]
     pub email: String,
     pub email_verified: bool,
-    #[field_mutator(OptionMutator<String, UsefulStringMutator> = { OptionMutator::new(useful_string_mutator()) })]
-    pub password_hash: Option<String>,
+    #[field_mutator(UsefulStringMutator = { useful_string_mutator() })]
+    pub password_hash: String,
     #[field_mutator(NaiveDateTimeMutator = { naive_date_time_mutator() })]
     pub created_at: NaiveDateTime,
     pub is_superuser: bool,

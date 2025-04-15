@@ -18,7 +18,7 @@ create table if not exists users (
     username text,
     email text not null,
     email_verified boolean not null,
-    password_hash text,
+    password_hash text not null,
     created_at timestamp not null,
     is_superuser boolean not null,
     -- specifies whether a user may create resources

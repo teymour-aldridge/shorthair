@@ -198,7 +198,7 @@ diesel::table! {
         username -> Nullable<Text>,
         email -> Text,
         email_verified -> Bool,
-        password_hash -> Nullable<Text>,
+        password_hash -> Text,
         created_at -> Timestamp,
         is_superuser -> Bool,
         may_create_resources -> Bool,
