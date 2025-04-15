@@ -22,6 +22,7 @@ use groups::{
     new_internals_page, view_groups,
 };
 use html::page_of_body;
+use maud::{html, Markup};
 use request_ids::RequestIdFairing;
 use rocket::{
     fairing::AdHoc,
@@ -87,6 +88,13 @@ fn index(user: Option<User>) -> maud::Markup {
     )
 }
 
+#[get("/up")]
+pub fn up() -> Markup {
+    html! {
+        p {"Hello world!"}
+    }
+}
+
 pub const MIGRATIONS: EmbeddedMigrations =
     embed_migrations!("../../migrations");
 
@@ -101,6 +109,12 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
 
     let figment =
         rocket::Config::figment().merge(("databases", map!["database" => db]));
+
+    let figment = if let Ok(secret) = std::env::var("SECRET_KEY") {
+        figment.merge(("secret_key", secret))
+    } else {
+        figment
+    };
 
     #[allow(unexpected_cfgs)]
     let figment = if cfg!(fuzzing) {
@@ -178,7 +192,8 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 member_overview_page,
                 config_page,
                 edit_existing_config_item_page,
-                do_upsert_config
+                do_upsert_config,
+                up
             ],
         )
         .attach(RequestIdFairing)

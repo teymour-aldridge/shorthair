@@ -1,0 +1,46 @@
+# Name of your application. Used to uniquely configure containers.
+service: eldemite
+
+# Name of the container image.
+image: teymour-aldridge/eldemite
+
+# Deploy to these servers.
+servers:
+  web:
+    - eldemite.net
+  # job:
+  #   hosts:
+  #     - 192.168.0.1
+  #   cmd: bin/jobs
+
+volumes:
+  - /var/apps/eldemite/storage:/data:rw
+
+proxy:
+  ssl: true
+  host: eldemite.net
+  # app_port: 3000
+
+registry:
+  server: ghcr.io
+  username: teymour-aldridge
+
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+env:
+  secret:
+    - SMTP_DOMAIN
+    - SMTP_USERNAME
+    - SMTP_PASSWORD
+    - SMTP_HOST
+    - SECRET_KEY
+    - DATABASE_URL
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+    - BUCKET_ENDPOINT
+    - BUCKET_NAME
+    - ROCKET_PORT
+    - ROCKET_ADDRESS

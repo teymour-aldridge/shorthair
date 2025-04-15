@@ -1,5 +1,2 @@
 [debug]
 secret_key = "8c5c7dce38f37cc8ea1de698944eee37c132ec9a7fdf0e9cce3c9850bf327542"
-
-[release]
-secret_key = "8c5c7dce38f37cc8ea1de698944eee37c132ec9a7fdf0e9cce3c9850bf327542"

@@ -1,0 +1,8 @@
+dbs:
+  - path: /data/sqlite.db
+    replicas:
+      - type: s3
+        bucket: ${BUCKET_NAME}
+        path: "eldemite"
+        endpoint: ${BUCKET_ENDPOINT}
+        force-path-style: true

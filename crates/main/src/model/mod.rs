@@ -73,6 +73,11 @@ pub fn make_test_runner() -> impl Fn(&Vec<Action>) {
         .expect("Failed to disable sync commit foreign keys");
 
     let rocket = crate::make_rocket(&db_name.clone());
+    let figment = rocket.figment().clone().merge((
+        "secret_key",
+        "7db4970440b3092a69247a841bd8c566c514e4ded9d4952ce7febf3381110a24",
+    ));
+    let rocket = rocket.configure(figment);
 
     let state = Arc::new(parking_lot::Mutex::new(State::of_rocket(rocket)));
 

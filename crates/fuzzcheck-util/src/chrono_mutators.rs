@@ -4,6 +4,7 @@ use fuzzcheck::{DefaultMutator, Mutator, mutators::map::MapMutator};
 pub type NaiveDateTimeMutator = impl Mutator<NaiveDateTime>;
 
 #[coverage(off)]
+#[define_opaque(NaiveDateTimeMutator)]
 pub fn naive_date_time_mutator() -> NaiveDateTimeMutator {
     MapMutator::new(
         i32::default_mutator(),

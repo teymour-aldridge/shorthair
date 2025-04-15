@@ -8,6 +8,7 @@ use fuzzcheck::{
 pub type UsizeWithinRangeMutator = impl Mutator<usize>;
 
 #[coverage(off)]
+#[define_opaque(UsizeWithinRangeMutator)]
 pub fn usize_within_range_mutator(
     range: Range<u64>,
 ) -> UsizeWithinRangeMutator {

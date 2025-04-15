@@ -338,7 +338,7 @@ pub fn solve_lp(
             +  1 * (difference_between_speakers)
             + /* todo: multiplier here */ (-1 * fewer_rooms_objective),
         )
-        .using(good_lp::solvers::scip::scip);
+        .using(good_lp::solvers::highs::highs);
 
     // add constraints to problem
     for constraint in constraints {

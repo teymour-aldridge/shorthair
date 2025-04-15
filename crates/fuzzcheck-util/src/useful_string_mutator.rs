@@ -11,6 +11,7 @@ use fuzzcheck::{
 
 pub type UsefulStringMutator = impl Mutator<String>;
 
+#[define_opaque(UsefulStringMutator)]
 pub fn useful_string_mutator() -> UsefulStringMutator {
     MapMutator::new(
         grammar(),
