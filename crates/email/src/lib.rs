@@ -5,6 +5,7 @@ use db::DbConn;
 use std::sync::Arc;
 
 #[cfg(debug_assertions)]
+/// Sends an email - this is done on a background thread.
 pub fn send_mail(
     to: Vec<(&str, &str)>,
     subject: &str,

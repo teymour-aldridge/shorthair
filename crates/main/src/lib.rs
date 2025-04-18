@@ -89,6 +89,9 @@ fn index(user: Option<User>) -> maud::Markup {
 }
 
 #[get("/up")]
+/// This is necessary for deploying with Kamal, because it uses this URL to
+/// perform a health check and requires a 200 status code (it seems strange
+/// that it doesn't accept any non 5xx status code though).
 pub fn up() -> Markup {
     html! {
         p {"Hello world!"}

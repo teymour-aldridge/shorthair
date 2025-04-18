@@ -16,6 +16,7 @@ create table if not exists users (
     id integer primary key not null,
     public_id text not null unique,
     username text,
+    -- note: there is a unique constraint in a subsequent migration
     email text not null,
     email_verified boolean not null,
     password_hash text not null,
@@ -28,6 +29,9 @@ create table if not exists users (
 
 -- If registration is disabled, users may still join if they are invited. This
 -- exists to make private instances managable.
+--
+-- todo: might want to add a field to record when the invite has been used
+-- (currently just check if an account with that email already exists)
 create table if not exists account_invites (
     id integer primary key not null,
     public_id text not null unique,

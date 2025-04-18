@@ -4,6 +4,7 @@ pub mod ballot;
 pub mod config;
 pub mod email;
 pub mod group;
+pub mod invite;
 pub mod magic_link;
 pub mod room;
 /// Database schema
