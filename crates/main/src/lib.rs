@@ -3,6 +3,9 @@
 use accounts::account_page;
 use admin::{
     config::{config_page, do_upsert_config, edit_existing_config_item_page},
+    invite::{
+        accept_invite_page, do_accept_invite, do_invite_user, send_invite_page,
+    },
     setup::{do_setup, setup_page},
 };
 use auth::{
@@ -196,7 +199,11 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 config_page,
                 edit_existing_config_item_page,
                 do_upsert_config,
-                up
+                up,
+                send_invite_page,
+                do_invite_user,
+                accept_invite_page,
+                do_accept_invite
             ],
         )
         .attach(RequestIdFairing)
