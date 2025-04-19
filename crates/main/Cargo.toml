@@ -33,6 +33,10 @@ fuzzcheck = { git = "https://github.com/loiclec/fuzzcheck-rs" }
 parking_lot = "0.12.3"
 fuzzcheck-util = { version = "0.1.0", path = "../fuzzcheck-util" }
 skillratings = "0.27.1"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+sentry = "0.37.0"
+sentry-tracing = "0.37.0"
+tracing = "0.1.41"
 
 [dependencies.rocket_sync_db_pools]
 features = ["diesel_sqlite_pool"]

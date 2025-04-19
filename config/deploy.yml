@@ -44,3 +44,4 @@ env:
     - BUCKET_NAME
     - ROCKET_PORT
     - ROCKET_ADDRESS
+    - SENTRY_URL

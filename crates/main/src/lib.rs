@@ -62,6 +62,7 @@ use spar_generation::{
     },
     spar_series_routes::member_overview_page,
 };
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub mod accounts;
 pub mod admin;
@@ -128,6 +129,32 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
     } else {
         figment
     };
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(sentry_tracing::layer())
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| {
+                    tracing_subscriber::EnvFilter::new("trace")
+                        .add_directive("hyper_util=off".parse().unwrap())
+                        .add_directive("rocket=off".parse().unwrap())
+                        .add_directive("hyper=off".parse().unwrap())
+                }),
+        )
+        .init();
+
+    if let Ok(sentry_url) = std::env::var("SENTRY_URL") {
+        std::mem::forget(sentry::init((
+            sentry_url,
+            sentry::ClientOptions {
+                traces_sample_rate: 1.0,
+                ..sentry::ClientOptions::default()
+            },
+        )));
+
+        tracing::info!("Sentry integration initialized");
+    }
 
     rocket::custom(figment)
         .attach(DbConn::fairing())

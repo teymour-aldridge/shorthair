@@ -1,9 +1,10 @@
-use db::user::User;
 use rocket::{
     fairing::{Fairing, Info, Kind},
+    http::Status,
     request::{self, FromRequest, Request},
     Data, Response,
 };
+use tracing::Span;
 use uuid::Uuid;
 
 /// A type that represents a request's ID.
@@ -43,6 +44,27 @@ impl<'r> FromRequest<'r> for RequestId {
     }
 }
 
+pub struct TracingSpan<T = tracing::Span>(pub T);
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for TracingSpan {
+    type Error = ();
+
+    async fn from_request(
+        request: &'r Request<'_>,
+    ) -> rocket::request::Outcome<Self, ()> {
+        match request.local_cache(|| TracingSpan::<Option<Span>>(None)) {
+            TracingSpan(Some(span)) => {
+                rocket::request::Outcome::Success(TracingSpan(span.to_owned()))
+            }
+            TracingSpan(None) => rocket::request::Outcome::Error((
+                Status::InternalServerError,
+                (),
+            )),
+        }
+    }
+}
+
 pub struct RequestIdFairing;
 
 #[rocket::async_trait]
@@ -56,23 +78,20 @@ impl Fairing for RequestIdFairing {
 
     async fn on_request(&self, req: &mut Request<'_>, _data: &mut Data<'_>) {
         let request_id = req.guard::<RequestId>().await;
-        let user = req.guard::<Option<User>>().await;
+        let user_agent = req.headers().get_one("User-Agent").unwrap_or("");
 
         let _ = request_id.map(|request_id| {
-            let _ = user.map(|user| {
-                if let Some(user) = user {
-                    rocket::info!(
-                        "Incoming request with ID {} (authenticated user with id `{}` and public id `{}`)",
-                        request_id.0,
-                        user.id,
-                        user.public_id
-                    )
-                } else {
-                    rocket::info!(
-                        "Incoming request with ID {} (not authenticated)",
-                        request_id.0,
-                    )
-                }
+            let span = tracing::info_span!(
+                "request",
+                otel.name=%format!("{} {}", req.method(), req.uri().path()),
+                http.method = %req.method(),
+                http.uri = %req.uri().path(),
+                http.user_agent=%user_agent,
+                http.status_code = tracing::field::Empty,
+                http.request_id=%request_id.to_string()
+            );
+            req.local_cache(|| {
+                TracingSpan::<Option<tracing::Span>>(Some(span))
             });
         });
     }
@@ -84,8 +103,27 @@ impl Fairing for RequestIdFairing {
     ) {
         let request_id = req.guard::<RequestId>().await;
 
+        if let Some(span) = req
+            .local_cache(|| TracingSpan::<Option<Span>>(None))
+            .0
+            .to_owned()
+        {
+            let _entered_span = span.entered();
+            _entered_span.record("http.status_code", res.status().code);
+
+            let _ = request_id.as_ref().map(|request_id| {
+                info!(
+                    "Returning request {} with {}",
+                    request_id.to_string(),
+                    res.status()
+                );
+            });
+
+            _entered_span.exit();
+        }
+
         let _ = request_id.map(|request_id| {
-            res.set_raw_header("X-Request-Id", request_id.0.clone())
+            res.set_raw_header("X-Request-Id", request_id.to_string())
         });
     }
 }

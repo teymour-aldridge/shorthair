@@ -1,15 +1,24 @@
 #!/bin/sh
 
-FROM rust AS builder
-
-COPY . /app
-
+FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
 WORKDIR /app
 
-RUN apt-get update
+FROM chef AS planner
+RUN apt-get update -y
 RUN apt-get install libclang-dev cmake -y
+COPY . .
+RUN cargo +nightly chef prepare --recipe-path recipe.json
 
-RUN cargo +nightly build --release
+FROM chef AS builder
+RUN apt-get update -y
+RUN apt-get install libclang-dev cmake -y
+COPY --from=planner /app/recipe.json recipe.json
+# Build dependencies - this is the caching Docker layer!
+RUN cargo +nightly chef cook --release --recipe-path recipe.json
+# Build application
+COPY . .
+
+RUN cargo +nightly build --release --bin main
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app

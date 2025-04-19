@@ -5,6 +5,7 @@ use db::DbConn;
 use std::sync::Arc;
 
 #[cfg(debug_assertions)]
+#[tracing::instrument(level = "trace", skip(db, html_contents, text_contents))]
 /// Sends an email - this is done on a background thread.
 pub fn send_mail(
     to: Vec<(&str, &str)>,
@@ -77,6 +78,7 @@ pub fn send_mail(
 }
 
 #[cfg(not(debug_assertions))]
+#[tracing::instrument(level = "trace", skip(db, html_contents, text_contents))]
 pub fn send_mail(
     to: Vec<(&str, &str)>,
     subject: &str,
@@ -88,6 +90,7 @@ pub fn send_mail(
 }
 
 #[allow(unused)]
+#[tracing::instrument(level = "trace", skip(db, html_contents, text_contents))]
 fn send_mail_internal(
     to: Vec<(&str, &str)>,
     subject: &str,
@@ -109,11 +112,15 @@ fn send_mail_internal(
         msg = msg.to(format!("{name} <{email}>").parse().unwrap())
     }
 
+    tracing::trace!("Added to field");
+
     let msg_id = format!(
         "{}@{}",
         Uuid::now_v7().to_string(),
         std::env::var("SMTP_DOMAIN").unwrap()
     );
+
+    tracing::trace!("Message id is {msg_id}");
 
     let domain = std::env::var("SMTP_DOMAIN")
         .unwrap_or_else(|_| "example.com".to_string());
@@ -155,9 +162,13 @@ fn send_mail_internal(
         .collect::<Vec<_>>()
         .join(",");
 
+    tracing::trace!("Created the message");
+
     // run in the background
     rocket::tokio::spawn(async move {
+        tracing::trace!("Sending message on background thread");
         mailer.send(msg).await.unwrap();
+        tracing::trace!("Send message on background thread");
         // todo: should log when this fails somewhere
         db.run(move |conn| {
             diesel::insert_into(emails::table)
