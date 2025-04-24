@@ -4,6 +4,7 @@ use rocket::{
     request::{self, FromRequest, Request},
     Data, Response,
 };
+use sentry::{configure_scope, Scope};
 use tracing::Span;
 use uuid::Uuid;
 
@@ -92,6 +93,9 @@ impl Fairing for RequestIdFairing {
             );
             span.in_scope(|| {
                 tracing::trace!("received request");
+                configure_scope(|scope| {
+                    scope.set_transaction(Some(&request_id.to_string()));
+                });
             });
             req.local_cache(|| {
                 TracingSpan::<Option<tracing::Span>>(Some(span))
