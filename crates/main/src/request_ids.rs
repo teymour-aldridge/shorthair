@@ -4,7 +4,7 @@ use rocket::{
     request::{self, FromRequest, Request},
     Data, Response,
 };
-use sentry::{configure_scope, Scope};
+use sentry::configure_scope;
 use tracing::Span;
 use uuid::Uuid;
 

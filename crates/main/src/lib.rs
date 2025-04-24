@@ -1,5 +1,7 @@
 #![feature(coverage_attribute)]
 
+use std::collections::HashMap;
+
 use accounts::account_page;
 use admin::{
     config::{config_page, do_upsert_config, edit_existing_config_item_page},
@@ -26,6 +28,18 @@ use groups::{
 };
 use html::page_of_body;
 use maud::{html, Markup};
+use opentelemetry::{global, KeyValue};
+use opentelemetry_otlp::WithHttpConfig;
+use opentelemetry_sdk::{
+    metrics::{MeterProviderBuilder, PeriodicReader, SdkMeterProvider},
+    trace::{RandomIdGenerator, Sampler, SdkTracerProvider},
+    Resource,
+};
+use opentelemetry_semantic_conventions::{
+    attribute::DEPLOYMENT_ENVIRONMENT_NAME,
+    resource::{SERVICE_NAME, SERVICE_VERSION},
+    SCHEMA_URL,
+};
 use request_ids::RequestIdFairing;
 use rocket::{
     fairing::AdHoc,
@@ -35,6 +49,7 @@ use rocket::{
     },
     Build, Rocket,
 };
+use sentry_tracing::EventFilter;
 use spar_generation::spar_series_routes::{
     add_member_page, approve_join_request, do_add_member, do_make_session,
     do_request2join_spar_series, internal_page, make_session_page,
@@ -62,7 +77,10 @@ use spar_generation::{
     },
     spar_series_routes::member_overview_page,
 };
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer};
+use tracing_subscriber::{
+    layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+};
 
 pub mod accounts;
 pub mod admin;
@@ -81,6 +99,7 @@ pub mod util;
 extern crate rocket;
 
 #[get("/")]
+#[tracing::instrument(skip(user))]
 fn index(user: Option<User>) -> maud::Markup {
     page_of_body(
         maud::html! {
@@ -104,6 +123,78 @@ pub fn up() -> Markup {
 
 pub const MIGRATIONS: EmbeddedMigrations =
     embed_migrations!("../../migrations");
+
+fn resource() -> Resource {
+    Resource::builder()
+        .with_schema_url(
+            [
+                KeyValue::new(SERVICE_NAME, env!("CARGO_PKG_NAME")),
+                KeyValue::new(SERVICE_VERSION, env!("CARGO_PKG_VERSION")),
+                KeyValue::new(DEPLOYMENT_ENVIRONMENT_NAME, "develop"),
+            ],
+            SCHEMA_URL,
+        )
+        .build()
+}
+
+// Construct MeterProvider for MetricsLayer
+fn init_meter_provider() -> SdkMeterProvider {
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_temporality(opentelemetry_sdk::metrics::Temporality::default())
+        .build()
+        .unwrap();
+
+    let reader = PeriodicReader::builder(exporter)
+        .with_interval(std::time::Duration::from_secs(30))
+        .build();
+
+    // For debugging in development
+    let stdout_reader = PeriodicReader::builder(
+        opentelemetry_stdout::MetricExporter::default(),
+    )
+    .build();
+
+    let meter_provider = MeterProviderBuilder::default()
+        .with_resource(resource())
+        .with_reader(reader)
+        .with_reader(stdout_reader)
+        .build();
+
+    global::set_meter_provider(meter_provider.clone());
+
+    meter_provider
+}
+
+// Construct TracerProvider for OpenTelemetryLayer
+fn init_tracer_provider() -> SdkTracerProvider {
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_http()
+        .with_headers({
+            let mut headers = HashMap::new();
+            if let Ok(auth) = std::env::var("OTEL_EXPORTER_OTLP_AUTHORIZATION")
+            {
+                headers.insert(
+                    "x-honeycomb-team".to_string(),
+                    auth.parse().unwrap(),
+                );
+            }
+            headers
+        })
+        .build()
+        .unwrap();
+
+    SdkTracerProvider::builder()
+        // Customize sampling strategy
+        .with_sampler(Sampler::ParentBased(Box::new(
+            Sampler::TraceIdRatioBased(1.0),
+        )))
+        // If export trace to AWS X-Ray, you can use XrayIdGenerator
+        .with_id_generator(RandomIdGenerator::default())
+        .with_resource(resource())
+        .with_batch_exporter(exporter)
+        .build()
+}
 
 pub fn make_rocket(default_db: &str) -> Rocket<Build> {
     let db: Map<_, Value> = map![
@@ -130,9 +221,27 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
         figment
     };
 
+    use opentelemetry::trace::TracerProvider;
+    let tracer_provider = init_tracer_provider();
+    let meter_provider = init_meter_provider();
+
+    let tracer = tracer_provider.tracer("tracing-otel-subscriber");
+
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
-        .with(sentry_tracing::layer())
+        .with(OpenTelemetryLayer::new(tracer))
+        .with(MetricsLayer::new(meter_provider.clone()))
+        .with(sentry_tracing::layer().event_filter(|md| {
+            md.module_path()
+                .map(|path| {
+                    if path.contains("hyper") || path.contains("rocket") {
+                        EventFilter::Ignore
+                    } else {
+                        EventFilter::Breadcrumb
+                    }
+                })
+                .unwrap_or(EventFilter::Breadcrumb)
+        }))
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| {
@@ -140,9 +249,18 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                         .add_directive("hyper_util=off".parse().unwrap())
                         .add_directive("rocket=off".parse().unwrap())
                         .add_directive("hyper=off".parse().unwrap())
+                        .add_directive("opentelemetry_sdk=off".parse().unwrap())
+                        .add_directive("reqwest=off".parse().unwrap())
+                        .add_directive(
+                            "opentelemetry-otlp=off".parse().unwrap(),
+                        )
                 }),
         )
         .init();
+
+    // todo: should probably shut these down rather than calling `mem::forget`
+    std::mem::forget(tracer_provider);
+    std::mem::forget(meter_provider);
 
     if let Ok(sentry_url) = std::env::var("SENTRY_URL") {
         std::mem::forget(sentry::init((

@@ -2,6 +2,7 @@
 
 // todo: this code is wrong (and a mess)
 use db::DbConn;
+use lettre::message::Mailbox;
 use std::sync::Arc;
 
 #[cfg(debug_assertions)]
@@ -21,6 +22,11 @@ pub fn send_mail(
         Message,
     };
     use uuid::Uuid;
+
+    tracing::warn!(
+        "This email is being sent using the debug mode sender (i.e.
+        it will NOT be sent over SMTP)"
+    );
 
     let mut msg = Message::builder();
     for (name, email) in &to {
@@ -110,9 +116,12 @@ fn send_mail_internal(
     };
     use uuid::Uuid;
 
+    tracing::info!("Sending this email using the non-debug mode email sender.");
+
     let mut msg = Message::builder();
     for (name, email) in &to {
-        msg = msg.to(format!("{name} <{email}>").parse().unwrap())
+        msg =
+            msg.to(Mailbox::new(Some(name.to_string()), email.parse().unwrap()))
     }
 
     tracing::trace!("Added to field");
@@ -156,6 +165,7 @@ fn send_mail_internal(
             &std::env::var("SMTP_HOST").unwrap(),
         )
         .unwrap()
+        .port(465)
         .credentials(creds)
         .build();
 
@@ -171,7 +181,7 @@ fn send_mail_internal(
     rocket::tokio::spawn(async move {
         tracing::trace!("Sending message on background thread");
         mailer.send(msg).await.unwrap();
-        tracing::trace!("Send message on background thread");
+        tracing::trace!("Sent message on background thread");
         // todo: should log when this fails somewhere
         db.run(move |conn| {
             diesel::insert_into(emails::table)

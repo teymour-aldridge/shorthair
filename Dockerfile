@@ -35,5 +35,7 @@ ADD https://github.com/benbjohnson/litestream/releases/download/v0.3.8/litestrea
 RUN tar -C /usr/local/bin -xzf /tmp/litestream.tar.gz
 COPY --from=builder /app/litestream.yml /etc/litestream.yml
 
+ENV RUST_BACKTRACE=1
+ENV OTEL_SERVICE_NAME="eldemite-server"
 ENTRYPOINT ["sh"]
 CMD ["run.sh"]

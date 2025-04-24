@@ -93,6 +93,7 @@ pub struct InviteUserForm {
 }
 
 #[post("/admin/invite", data = "<invite>")]
+#[tracing::instrument(skip(user, db, invite, span))]
 pub async fn do_invite_user(
     user: User,
     db: DbConn,
@@ -160,6 +161,8 @@ pub async fn do_invite_user(
                 .on_conflict_do_nothing()
                 .execute(conn).unwrap();
             assert!(n <= 1);
+
+            tracing::trace!("Did insert of new user.");
 
             let code = account_invites::table
                 .filter(account_invites::email.eq(invite.email.trim().to_ascii_lowercase()))
