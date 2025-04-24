@@ -17,14 +17,15 @@ pub fn send_mail(
     use db::schema::emails;
     use diesel::prelude::*;
     use lettre::{
-        message::{header::ContentType, MultiPart, SinglePart},
+        message::{header::ContentType, Mailbox, MultiPart, SinglePart},
         Message,
     };
     use uuid::Uuid;
 
     let mut msg = Message::builder();
     for (name, email) in &to {
-        msg = msg.to(format!("{name} <{email}>").parse().unwrap())
+        msg =
+            msg.to(Mailbox::new(Some(name.to_string()), email.parse().unwrap()))
     }
     let domain = std::env::var("SMTP_DOMAIN")
         .unwrap_or_else(|_| "example.com".to_string());
@@ -75,6 +76,8 @@ pub fn send_mail(
         })
         .await
     });
+
+    tracing::trace!("Sent email");
 }
 
 #[cfg(not(debug_assertions))]

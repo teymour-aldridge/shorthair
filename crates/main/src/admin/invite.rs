@@ -15,10 +15,12 @@ use maud::{html, Markup};
 use rand::rngs::OsRng;
 use rocket::form::Form;
 use rocket::response::Redirect;
+use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::model::sync::id::gen_uuid;
 use crate::request_ids::RequestId;
+use crate::request_ids::TracingSpan;
 use crate::{
     html::{error_403, page_of_body, page_title},
     permissions::has_permission,
@@ -95,6 +97,7 @@ pub async fn do_invite_user(
     user: User,
     db: DbConn,
     invite: Form<InviteUserForm>,
+    span: TracingSpan,
 ) -> Result<Markup, Markup> {
     let db = Arc::new(db);
     db.clone().run(move |conn| {
@@ -110,6 +113,8 @@ pub async fn do_invite_user(
                 )));
             }
 
+            tracing::trace!("User has permission to send invite");
+
             if !User::validate_email(&invite.email)
             {
                 return Ok(Err(page_of_body(
@@ -120,6 +125,8 @@ pub async fn do_invite_user(
                     Some(user),
                 )));
             }
+
+            tracing::trace!("Email to send invite to passed validation.");
 
             if diesel::select(diesel::dsl::exists(
                 users::table.filter(users::email.eq(&invite.email)),
@@ -136,11 +143,12 @@ pub async fn do_invite_user(
                 )));
             }
 
-            let code = Uuid::new_v4().to_string();
+            tracing::trace!("No such user already exists.");
+
             let n = diesel::insert_into(account_invites::table)
                 .values((
                     account_invites::public_id.eq(gen_uuid().to_string()),
-                    account_invites::code.eq(&code),
+                    account_invites::code.eq(Uuid::new_v4().to_string()),
                     // we convert the email address into a canonical form to try
                     // to prevent people from accidentally sending duplicate
                     // account creation emails
@@ -148,8 +156,16 @@ pub async fn do_invite_user(
                     account_invites::sent_by.eq(&user.id),
                     account_invites::created_at.eq(diesel::dsl::now),
                 ))
+                // todo: warn when sending duplicate invites
+                .on_conflict_do_nothing()
                 .execute(conn).unwrap();
-            assert_eq!(n, 1);
+            assert!(n <= 1);
+
+            let code = account_invites::table
+                .filter(account_invites::email.eq(invite.email.trim().to_ascii_lowercase()))
+                .select(account_invites::code)
+                .first::<String>(conn)
+                .unwrap();
 
             let link = format!("https://eldemite.net/invites/{}", code);
             send_mail(
@@ -180,6 +196,7 @@ pub async fn do_invite_user(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 

@@ -90,6 +90,9 @@ impl Fairing for RequestIdFairing {
                 http.status_code = tracing::field::Empty,
                 http.request_id=%request_id.to_string()
             );
+            span.in_scope(|| {
+                tracing::trace!("received request");
+            });
             req.local_cache(|| {
                 TracingSpan::<Option<tracing::Span>>(Some(span))
             });
