@@ -77,10 +77,6 @@ use spar_generation::{
     },
     spar_series_routes::member_overview_page,
 };
-use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer};
-use tracing_subscriber::{
-    layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
-};
 
 pub mod accounts;
 pub mod admin;
@@ -124,7 +120,7 @@ pub fn up() -> Markup {
 pub const MIGRATIONS: EmbeddedMigrations =
     embed_migrations!("../../migrations");
 
-fn resource() -> Resource {
+pub fn resource() -> Resource {
     Resource::builder()
         .with_schema_url(
             [
@@ -138,7 +134,7 @@ fn resource() -> Resource {
 }
 
 // Construct MeterProvider for MetricsLayer
-fn init_meter_provider() -> SdkMeterProvider {
+pub fn init_meter_provider() -> SdkMeterProvider {
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
         .with_temporality(opentelemetry_sdk::metrics::Temporality::default())
@@ -167,7 +163,7 @@ fn init_meter_provider() -> SdkMeterProvider {
 }
 
 // Construct TracerProvider for OpenTelemetryLayer
-fn init_tracer_provider() -> SdkTracerProvider {
+pub fn init_tracer_provider() -> SdkTracerProvider {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
         .with_headers({
@@ -221,52 +217,55 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
         figment
     };
 
-    use opentelemetry::trace::TracerProvider;
-    let tracer_provider = init_tracer_provider();
-    let meter_provider = init_meter_provider();
+    #[cfg(not(test))]
+    {
+        use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer};
+        use tracing_subscriber::{
+            layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+        };
 
-    let tracer = tracer_provider.tracer("tracing-otel-subscriber");
+        use opentelemetry::trace::TracerProvider;
+        let tracer_provider = init_tracer_provider();
+        let meter_provider = init_meter_provider();
 
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(OpenTelemetryLayer::new(tracer))
-        .with(MetricsLayer::new(meter_provider.clone()))
-        .with(sentry_tracing::layer().event_filter(|md| {
-            md.module_path()
-                .map(|path| {
-                    if path.contains("hyper") || path.contains("rocket") {
-                        EventFilter::Ignore
-                    } else {
-                        EventFilter::Breadcrumb
-                    }
-                })
-                .unwrap_or(EventFilter::Breadcrumb)
-        }))
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| {
-                    tracing_subscriber::EnvFilter::new("trace")
-                        .add_directive("hyper_util=off".parse().unwrap())
-                        .add_directive("rocket=off".parse().unwrap())
-                        .add_directive("hyper=off".parse().unwrap())
-                        .add_directive("opentelemetry_sdk=off".parse().unwrap())
-                        .add_directive("reqwest=off".parse().unwrap())
-                        .add_directive(
-                            "opentelemetry-otlp=off".parse().unwrap(),
-                        )
-                }),
-        )
-        .init();
+        let tracer = tracer_provider.tracer("tracing-otel-subscriber");
 
-    // todo: should probably shut these down rather than calling `mem::forget`
-    std::mem::forget(tracer_provider);
-    std::mem::forget(meter_provider);
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer())
+            .with(OpenTelemetryLayer::new(tracer))
+            .with(MetricsLayer::new(meter_provider.clone()))
+            .with(sentry_tracing::layer().event_filter(|md| {
+                md.module_path()
+                    .map(|path| {
+                        if path.contains("hyper") || path.contains("rocket") {
+                            EventFilter::Ignore
+                        } else {
+                            EventFilter::Breadcrumb
+                        }
+                    })
+                    .unwrap_or(EventFilter::Breadcrumb)
+            }))
+            .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                EnvFilter::new("trace")
+                    .add_directive("hyper_util=off".parse().unwrap())
+                    .add_directive("rocket=off".parse().unwrap())
+                    .add_directive("hyper=off".parse().unwrap())
+                    .add_directive("opentelemetry_sdk=off".parse().unwrap())
+                    .add_directive("reqwest=off".parse().unwrap())
+                    .add_directive("opentelemetry-otlp=off".parse().unwrap())
+            }))
+            .init();
+
+        // todo: should probably shut these down rather than calling `mem::forget`
+        std::mem::forget(tracer_provider);
+        std::mem::forget(meter_provider);
+    }
 
     if let Ok(sentry_url) = std::env::var("SENTRY_URL") {
         std::mem::forget(sentry::init((
             sentry_url,
             sentry::ClientOptions {
-                traces_sample_rate: 1.0,
+                traces_sample_rate: 0.0,
                 ..sentry::ClientOptions::default()
             },
         )));

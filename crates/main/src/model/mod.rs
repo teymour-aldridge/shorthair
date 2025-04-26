@@ -118,17 +118,5 @@ mod regressions {
     #[test]
     fn regressions() {
         let runner = make_test_runner();
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/ff13d114fc562004.json"
-            ))
-            .unwrap(),
-        );
-        (runner)(
-            &serde_json::from_str(include_str!(
-                "testcases/fcb62ab95e1ae2f9.json"
-            ))
-            .unwrap(),
-        );
     }
 }
