@@ -401,7 +401,7 @@ pub async fn do_accept_invite(
                 .unwrap();
             assert_eq!(n, 1);
 
-            return Ok(Ok(Redirect::to("/profile")))
+            return Ok(Ok(Redirect::to("/user")))
         })
         .unwrap()
     })

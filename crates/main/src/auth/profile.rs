@@ -14,7 +14,7 @@ fn auth_profile_page(user: Option<User>, _: Option<String>) -> Markup {
     page_of_body(html! {}, user)
 }
 
-#[get("/profile/auth")]
+#[get("/user/auth")]
 pub async fn profile_page(user: User) -> Markup {
     auth_profile_page(Some(user), None)
 }
@@ -26,7 +26,7 @@ pub struct SetPasswordForm {
     password2: String,
 }
 
-#[post("/profile/setpassword", data = "<form>")]
+#[post("/user/setpassword", data = "<form>")]
 pub async fn do_set_password(
     user: User,
     db: DbConn,

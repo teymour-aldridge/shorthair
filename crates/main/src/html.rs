@@ -7,7 +7,7 @@ pub fn page_of_body(body: Markup, user: Option<User>) -> Markup {
         (DOCTYPE)
         html {
             head {
-                title { "Shorthair" }
+                title { "Eldemite" }
                 script src="/static/htmx.js" crossorigin="anonymous" {}
                 link href="/static/styles.css" rel="stylesheet" {}
                 meta name="viewport" content="width=device-width, initial-scale=1" {}
@@ -24,6 +24,9 @@ pub fn page_of_body(body: Markup, user: Option<User>) -> Markup {
                             @if user.is_some() {
                                 li class="nav-item nav-justify-start" {
                                     a class="nav-link text-white" aria-current="page" href="/user" { "Profile" }
+                                }
+                                li class="nav-item nav-justify-start" {
+                                    a class="nav-link text-white" aria-current="page" href="/logout" { "Logout" }
                                 }
                             } @else {
                                 li {
