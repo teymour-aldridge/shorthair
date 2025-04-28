@@ -92,7 +92,7 @@ impl Fairing for RequestIdFairing {
                 http.request_id=%request_id.to_string()
             );
             span.in_scope(|| {
-                tracing::trace!("received request");
+                tracing::info!("received request");
                 configure_scope(|scope| {
                     scope.set_transaction(Some(&request_id.to_string()));
                 });

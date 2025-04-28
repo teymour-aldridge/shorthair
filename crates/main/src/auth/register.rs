@@ -132,6 +132,21 @@ pub async fn do_register(
                 )));
             }
 
+            if diesel::dsl::select(diesel::dsl::exists(
+                users::table.filter(users::username.eq(&form.username)),
+            ))
+            .get_result::<bool>(conn)
+            .unwrap()
+            {
+                return Ok(Err(register_form(
+                    Some(&form),
+                    Some(
+                        "Error: a user with that username already exists. Please
+                        select a different username.",
+                    ),
+                )));
+            }
+
             let salt = SaltString::generate(&mut OsRng);
 
             let argon2 = Argon2::default();

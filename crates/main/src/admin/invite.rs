@@ -361,6 +361,22 @@ pub async fn do_accept_invite(
                 )));
             }
 
+            if diesel::dsl::select(diesel::dsl::exists(
+                users::table.filter(users::username.eq(&form.username)),
+            ))
+            .get_result::<bool>(conn)
+            .unwrap()
+            {
+                return Ok(Err(create_account_form(
+                    &form.email,
+                    Some(&form),
+                    Some(
+                        "Error: a user with that username already exists. Please
+                        select a different username.",
+                    ),
+                )));
+            }
+
             let salt = SaltString::generate(&mut OsRng);
 
             let argon2 = Argon2::default();

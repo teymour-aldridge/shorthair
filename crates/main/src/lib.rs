@@ -1,6 +1,6 @@
 #![feature(coverage_attribute)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Cursor};
 
 use accounts::account_page;
 use admin::{
@@ -47,6 +47,7 @@ use rocket::{
         util::map,
         value::{Map, Value},
     },
+    http::ContentType,
     Build, Rocket,
 };
 use sentry_tracing::EventFilter;
@@ -115,6 +116,26 @@ pub fn up() -> Markup {
     html! {
         p {"Hello world!"}
     }
+}
+
+#[derive(Responder)]
+#[response(status = 200, content_type = "js")]
+pub struct JsResponse(&'static str);
+
+#[get("/static/htmx.js")]
+pub fn vendored_htmx() -> JsResponse {
+    let script = include_str!("vendored/htmx.js");
+    JsResponse(script)
+}
+
+#[derive(Responder)]
+#[response(status = 200, content_type = "css")]
+pub struct CssResponse(&'static str);
+
+#[get("/static/styles.css")]
+pub fn vendored_css() -> CssResponse {
+    let stylesheet = include_str!("vendored/styles.css");
+    CssResponse(stylesheet)
 }
 
 pub const MIGRATIONS: EmbeddedMigrations =
@@ -347,7 +368,9 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 send_invite_page,
                 do_invite_user,
                 accept_invite_page,
-                do_accept_invite
+                do_accept_invite,
+                vendored_css,
+                vendored_htmx
             ],
         )
         .attach(RequestIdFairing)
