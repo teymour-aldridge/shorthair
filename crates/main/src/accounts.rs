@@ -30,6 +30,11 @@ pub async fn account_page(user: User, db: DbConn, span: TracingSpan) -> Markup {
                     li {
                         a href="/user/auth" {"Change password"}
                     }
+                    li {
+                        // todo: check if user has permission to create
+                        // resources
+                        a href="/groups/new" {"Create a new group"}
+                    }
                 }
 
                 h3 {"My groups"}

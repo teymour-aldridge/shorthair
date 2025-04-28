@@ -53,7 +53,7 @@ use rocket::{
 use spar_generation::spar_series_routes::{
     add_member_page, approve_join_request, do_add_member, do_make_session,
     do_request2join_spar_series, internal_page, make_session_page,
-    request2join_spar_series_page,
+    request2join_spar_series_page, set_member_email, set_member_email_page,
 };
 use spar_generation::{
     allocation_problem::{
@@ -371,7 +371,9 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 vendored_css,
                 vendored_htmx,
                 profile_page,
-                do_set_password
+                do_set_password,
+                set_member_email_page,
+                set_member_email
             ],
         )
         .attach(RequestIdFairing)

@@ -31,7 +31,8 @@ pub async fn spar_signup_search_page(
             let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
                 .first::<Spar>(conn)
-                .optional().unwrap();
+                .optional()
+                .unwrap();
 
             Ok(spar.map(move |spar| {
                 let series = spar_series::table
@@ -39,52 +40,82 @@ pub async fn spar_signup_search_page(
                     .first::<SparSeries>(conn)
                     .unwrap();
 
-                let join_request_link = if series.allow_join_requests {
-                    if series.auto_approve_join_requests {
-                        maud::html! {
-                            div class="alert alert-info" role="alert" {
-                                "If you are not a member of this spar group"
-                                a href=(format!("/spar_series/{}/request2join", series.public_id)) {
-                                    "you can join on this page."
-                                }
-                            }
-                        }
-                    } else {
-                        maud::html! {
-                            div class="alert alert-info" role="alert" {
-                                "If you are not a member of this series you can "
-                                a href=(format!("/spar_series/{}/request2join", series.public_id)) {
-                                    "request to join on this page."
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    maud::html!()
-                };
+                let join_request_link = join_request_link_of_series(&series);
 
-                let markup = maud::html! {
-                    (join_request_link)
-                    form method="post" {
-                        div class="mb-3" {
-                            label for="query" class="form-label" {
-                                "Name"
-                            }
-                            input type="text" class="form-control" id="query" name="query" aria-describedby="queryHelp" {}
-                            div id="queryHelp" class="form-text" {
-                                "This is not case sensitive."
-                            }
-                        }
-                        button type="submit" class="btn btn-primary" { "Search" }
-                    }
-                };
-
-                page_of_body(markup, user)
+                render_search_form(None, user, &join_request_link, None, None)
             }))
         })
         .unwrap()
     })
     .await
+}
+
+fn join_request_link_of_series(series: &SparSeries) -> Markup {
+    if series.allow_join_requests {
+        if series.auto_approve_join_requests {
+            maud::html! {
+                div class="alert alert-info" role="alert" {
+                    "If you are not a member of this spar group"
+                    a href=(format!("/spar_series/{}/request2join", series.public_id)) {
+                        "you can join on this page."
+                    }
+                }
+            }
+        } else {
+            maud::html! {
+                div class="alert alert-info" role="alert" {
+                    "If you are not a member of this series you can "
+                    a href=(format!("/spar_series/{}/request2join", series.public_id)) {
+                        "request to join on this page."
+                    }
+                }
+            }
+        }
+    } else {
+        maud::html!()
+    }
+}
+
+fn render_search_form(
+    error: Option<&str>,
+    user: Option<User>,
+    join_request_link: &Markup,
+    prev: Option<&SearchForm>,
+    results: Option<Markup>,
+) -> Markup {
+    let markup = maud::html! {
+        (join_request_link)
+
+        @if let Some(err) = error {
+            div class="alert alert-danger" role="alert" {
+                (err)
+            }
+        }
+
+        form method="post" {
+            div class="mb-3" {
+                label for="query" class="form-label" {
+                    "Name"
+                }
+                input type="text"
+                    class="form-control"
+                    id="query"
+                    name="query"
+                    aria-describedby="queryHelp"
+                    value=(prev.map(|p| p.query.clone()).unwrap_or_default()) {}
+                div id="queryHelp" class="form-text" {
+                    "This is not case sensitive."
+                }
+            }
+            button type="submit" class="btn btn-primary" { "Search" }
+        }
+
+        @if let Some(r) = results {
+            (r)
+        }
+    };
+
+    page_of_body(markup, user)
 }
 
 #[derive(FromForm)]
@@ -108,6 +139,16 @@ pub async fn do_spar_signup_search(
 
             let query = search.query.clone();
 
+            if query.len() < 3 {
+                return Ok(Some(render_search_form(
+                    Some("Please type at least three characters!"),
+                    user,
+                    &maud::html!(),
+                    Some(&search),
+                    None,
+                )))
+            }
+
             if let Some(spar) = spar {
                 let raw_query = format!(
                     "SELECT ssm.*
@@ -122,20 +163,7 @@ pub async fn do_spar_signup_search(
                     .bind::<diesel::sql_types::Text, _>(format!("{}*", query))
                     .load::<SparSeriesMember>(conn)?;
 
-                let markup = maud::html! {
-                    form method="post" {
-                        div class="mb-3" {
-                            label for="query" class="form-label" {
-                                "Name"
-                            }
-                            input type="name" class="form-control" id="query" name="query" aria-describedby="queryHelp" {}
-                            div id="queryHelp" class="form-text" {
-                                "This is not case sensitive."
-                            }
-                        }
-                        button type="submit" class="btn btn-primary" { "Search" }
-                    }
-
+                let search_results = maud::html! {
                     hr {}
 
                     h3 {"Search results"}
@@ -168,7 +196,7 @@ pub async fn do_spar_signup_search(
                     }
                 };
 
-                Ok(Some(page_of_body(markup, user)))
+                Ok(Some(render_search_form(None, user, &maud::html! {}, Some(&search), Some(search_results))))
             } else {
                 return Ok(None);
             }

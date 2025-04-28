@@ -74,6 +74,7 @@ pub async fn internal_page(
                     @if let Some(description) = &spar_series.description {
                         p { (description) }
                     }
+                    a href=(format!("/spar_series/{}/add_member", spar_series.public_id)) type="button" class="btn btn-primary m-1" { "Add member" }
                     a href=(format!("/spar_series/{}/members", spar_series.public_id)) type="button" class="btn btn-primary m-1" { "Member overview" }
                     a href=(format!("/spar_series/{}/join_requests", spar_series.public_id)) type="button" class="btn btn-primary m-1" { "Manage join requests" }
                     a href=(format!("/spar_series/{}/makesess", spar_series.public_id)) type="button" class="btn btn-primary m-1" { "Create new session" }
@@ -334,20 +335,7 @@ pub async fn add_member_page(
                     ));
                 }
 
-                let markup = maud::html! {
-                    h1 { "Add member" }
-                    form method="POST" {
-                        div class="mb-3" {
-                            label for="name" class="form-label" { "Full name" }
-                            input name="name" type="text" class="form-control" id="name" {}
-                        }
-                        div class="mb-3" {
-                            label for="email" class="form-label" { "Email address" }
-                            input name="email" type="email" class="form-control" id="email" {}
-                        }
-                        button type="submit" class="btn btn-primary" { "Add member" }
-                    }
-                };
+                let markup = render_add_member_form(None::<String>, None);
                 Ok(page_of_body(markup, Some(user)))
             } else {
                 Ok(error_403(
@@ -362,6 +350,31 @@ pub async fn add_member_page(
         .unwrap()
     })
     .await
+}
+
+fn render_add_member_form<T: ToString>(
+    error: Option<T>,
+    prev: Option<&AddMemberForm>,
+) -> Markup {
+    maud::html! {
+        h1 { "Add member" }
+        @if let Some(error_msg) = error {
+            div class="alert alert-danger" role="alert" {
+                (error_msg.to_string())
+            }
+        }
+        form method="POST" {
+            div class="mb-3" {
+                label for="name" class="form-label" { "Full name" }
+                input name="name" value=(prev.map(|p| p.name.to_string()).unwrap_or_default()) type="text" class="form-control" id="name" required {}
+            }
+            div class="mb-3" {
+                label for="email" class="form-label" { "Email address" }
+                input name="email" type="email" class="form-control" id="email" required {}
+            }
+            button type="submit" value=(prev.map(|p| p.name.to_string()).unwrap_or_default()) class="btn btn-primary" { "Add member" }
+        }
+    }
 }
 
 #[derive(FromForm, Serialize, Deserialize)]
@@ -384,22 +397,42 @@ pub async fn do_add_member(
                 .inner_join(groups::table)
                 .get_result::<(SparSeries, Group)>(conn)?;
 
-            let user_is_admin = select(exists(
-                group_members::table
-                    .filter(group_members::group_id.eq(group.id))
-                    .filter(group_members::user_id.eq(user.id))
-                    .filter(
-                        group_members::has_signing_power
-                            .eq(true)
-                            .or(group_members::is_admin.eq(true)),
-                    ),
-            ))
-            .get_result::<bool>(conn)
-            .unwrap();
+            let required_permission = Permission::ModifyResourceInGroup(crate::resources::GroupRef(group.id));
+            let user_is_admin = has_permission(Some(&user), &required_permission, conn);
 
             if !user_is_admin {
                 return Ok(error_403(
                     Some("Error: you are not authorized to administer this group.".to_string()),
+                    Some(user)
+                ));
+            }
+
+            if form.name.len() < 3 {
+                return Ok(page_of_body(render_add_member_form(Some("Error: names must be at least 3 characters!"), Some(&form)), Some(user)));
+            }
+
+            if !User::validate_email(&form.email) {
+                return Ok(page_of_body(render_add_member_form(Some("Error: the provided email is not valid!"), Some(&form)), Some(user)));
+            }
+
+            let member_already_exists = {
+                select(exists(
+                    spar_series_members::table
+                        .filter(
+                            spar_series_members::email.eq(&form.email)
+                                .or(spar_series_members::name.eq(&form.name))
+                        )
+                ))
+                .get_result::<bool>(conn)
+                .unwrap()
+            };
+
+            if member_already_exists {
+                return Ok(page_of_body(
+                    render_add_member_form(
+                        Some("Error: A member with this name or email already exists in this spar series!".to_string()),
+                        Some(&form)
+                    ),
                     Some(user)
                 ));
             }
@@ -430,7 +463,10 @@ pub async fn do_add_member(
     .await
 }
 
-fn render_request2join_form(error: Option<String>) -> Markup {
+fn render_request2join_form(
+    error: Option<String>,
+    prev: Option<&Request2JoinSparSeriesForm>,
+) -> Markup {
     html! {
         h1 { "Request to Join" }
         @if let Some(error_msg) = error {
@@ -441,11 +477,19 @@ fn render_request2join_form(error: Option<String>) -> Markup {
         form method="POST" {
             div class="mb-3" {
                 label for="name" class="form-label" { "Full name" }
-                input name="name" type="text" class="form-control" id="name" {}
+                input name="name"
+                      type="text"
+                      value=(prev.map(|p| p.name.to_string()).unwrap_or_default())
+                      class="form-control"
+                      id="name" {}
             }
             div class="mb-3" {
                 label for="email" class="form-label" { "Email address" }
-                input name="email" type="email" class="form-control" id="email" {}
+                input name="email"
+                      type="email"
+                      value=(prev.map(|p| p.email.to_string()).unwrap_or("".to_string()))
+                      class="form-control"
+                      id="email" {}
             }
             button type="submit" class="btn btn-primary" { "Submit request" }
         }
@@ -481,7 +525,7 @@ pub async fn request2join_spar_series_page(
                 }))
             }
 
-            let page = render_request2join_form(None);
+            let page = render_request2join_form(None, None);
             Ok(Some(page_of_body(page, user)))
         })
         .unwrap()
@@ -507,7 +551,7 @@ pub async fn do_request2join_spar_series(
             if !is_valid_email(&form.email) {
                 let page = render_request2join_form(Some(
                     "Error: invalid email supplied.".to_string(),
-                ));
+                ), Some(&form));
                 return Ok(Some(page_of_body(page, user)));
             }
 
@@ -536,7 +580,11 @@ pub async fn do_request2join_spar_series(
                 .optional()
                 .unwrap();
             if existing_member.is_some() {
-                let body = render_request2join_form(Some("Such a user already exists".to_string()));
+                let body = render_request2join_form(
+                    Some("Error: A user with this name or email already exists in this spar series."
+                        .to_string()),
+                    Some(&form),
+                );
                 return Ok(Some(page_of_body(body, user)))
             }
 
@@ -789,6 +837,7 @@ pub async fn member_overview_page(
 
             let members = spar_series_members::table
                 .filter(spar_series_members::spar_series_id.eq(series.id))
+                .order_by(spar_series_members::name.asc())
                 .load::<SparSeriesMember>(conn)
                 .unwrap();
 
@@ -807,11 +856,16 @@ pub async fn member_overview_page(
                             @for member in members {
                                 tr {
                                     td { (member.name) }
-                                    td { (member.email) }
+                                td {
+                                    span { (member.email) }
+                                    a href=(format!("/spar_series/{spar_series_id}/members/{}/set_email", member.public_id)) class="ms-2 text-decoration-none" title="Edit email" {
+                                        "(edit)"
+                                    }
+                                }
                                     td { (member.created_at.format("%Y-%m-%d %H:%M:%S")) }
                                     td {
                                         a href=(format!("/spar_series/{spar_series_id}/members/{}", member.public_id)) {
-                                            "Edit member"
+                                            "View member"
                                         }
                                     }
                                 }
@@ -827,6 +881,7 @@ pub async fn member_overview_page(
 
             let markup = html! {
                 h1 { "Members" }
+                a href=(format!("/spar_series/{}/add_member", series.public_id)) type="button" class="btn btn-primary m-1" { "Add member" }
                 (table)
             };
 
@@ -883,18 +938,167 @@ pub async fn spar_series_member_overview(
 
             let markup = html! {
                 (page_title(format!("Record for {}", member.name)))
+                    div class="card" style="width: 50%;" {
+                        div class="card-body" {
+                            h5 class="card-title" { "About " (member.name) }
+                            h6 class="card-subtitle mb-2 text-body-secondary" { (member.email) }
+                            p class="card-text" {
+                                "Member since: " (member.created_at.format("%Y-%m-%d %H:%M:%S"))
+                            }
+                            a href=(format!("/spar_series/{}/members/{}/set_email", spar_series_id, member.public_id)) class="btn btn-sm btn-outline-primary mt-2" {
+                                "Edit Email"
+                            }
+                        }
+                    }
+            };
+
+            Ok(Some(page_of_body(markup, Some(user))))
+        })
+        .unwrap()
+    })
+    .await
+}
+
+#[get("/spar_series/<spar_series_id>/members/<spar_member_id>/set_email")]
+pub async fn set_member_email_page(
+    spar_series_id: &str,
+    spar_member_id: &str,
+    db: DbConn,
+    user: User,
+) -> Option<Markup> {
+    let spar_series_id = spar_series_id.to_string();
+    let spar_member_id = spar_member_id.to_string();
+
+    db.run(move |conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let series = match spar_series::table
+                .filter(spar_series::public_id.eq(&spar_series_id))
+                .first::<SparSeries>(conn)
+                .optional()
+                .unwrap()
+            {
+                Some(s) => s,
+                None => return Ok(None),
+            };
+
+            let required_permission = Permission::ModifyResourceInGroup(
+                crate::resources::GroupRef(series.group_id),
+            );
+            if !has_permission(Some(&user), &required_permission, conn) {
+                return Ok(Some(error_403(
+                    Some("Error: you are not authorized to modify this group!"),
+                    Some(user),
+                )));
+            };
+
+            let member = match spar_series_members::table
+                .filter(spar_series_members::public_id.eq(spar_member_id))
+                .filter(spar_series_members::spar_series_id.eq(series.id))
+                .first::<SparSeriesMember>(conn)
+                .optional()
+                .unwrap()
+            {
+                Some(m) => m,
+                None => return Ok(None),
+            };
+
+            let markup = html! {
+                (page_title(format!("Update Email for {}", member.name)))
                 div class="card" style="width: 50%;" {
                     div class="card-body" {
-                        h5 class="card-title" { "About " (member.name) }
-                        h6 class="card-subtitle mb-2 text-body-secondary" { (member.email) }
+                        h5 class="card-title" { "Change email for " (member.name) }
                         p class="card-text" {
-                            "Member since: " (member.created_at.format("%Y-%m-%d %H:%M:%S"))
+                            "Current email: " (member.email)
                         }
+                        form method="POST" {
+                            div class="mb-3" {
+                                label for="email" class="form-label" { "New email address" }
+                                input name="email" type="email" class="form-control" id="email" required {}
+                            }
+                            button type="submit" class="btn btn-primary" { "Update email" }
+                        }
+                        a href=(format!("/spar_series/{}/members/{}", spar_series_id, member.public_id)) class="card-link" { "Cancel" }
                     }
                 }
             };
 
             Ok(Some(page_of_body(markup, Some(user))))
+        })
+        .unwrap()
+    })
+    .await
+}
+
+#[derive(FromForm, Serialize)]
+pub struct SetEmailForm {
+    pub email: String,
+}
+
+#[post(
+    "/spar_series/<spar_series_id>/members/<spar_member_id>/set_email",
+    data = "<form>"
+)]
+pub async fn set_member_email(
+    spar_series_id: &str,
+    spar_member_id: &str,
+    db: DbConn,
+    user: User,
+    form: Form<SetEmailForm>,
+) -> Option<Result<Redirect, Markup>> {
+    let spar_series_id = spar_series_id.to_string();
+    let spar_member_id = spar_member_id.to_string();
+
+    db.run(move |conn| {
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let series = match spar_series::table
+                .filter(spar_series::public_id.eq(&spar_series_id))
+                .first::<SparSeries>(conn)
+                .optional()
+                .unwrap()
+            {
+                Some(s) => s,
+                None => return Ok(None),
+            };
+
+            let required_permission = Permission::ModifyResourceInGroup(
+                crate::resources::GroupRef(series.group_id),
+            );
+            if !has_permission(Some(&user), &required_permission, conn) {
+                return Ok(Some(Err(error_403(
+                    Some("Error: you are not authorized to modify this group!"),
+                    Some(user),
+                ))));
+            };
+
+            let member = match spar_series_members::table
+                .filter(spar_series_members::public_id.eq(&spar_member_id))
+                .filter(spar_series_members::spar_series_id.eq(series.id))
+                .first::<SparSeriesMember>(conn)
+                .optional()
+                .unwrap()
+            {
+                Some(m) => m,
+                None => return Ok(None),
+            };
+
+            if !is_valid_email(&form.email) {
+                return Ok(Some(Err(error_403(
+                    Some("Error: the provided email is not valid!"),
+                    Some(user),
+                ))));
+            }
+
+            diesel::update(
+                spar_series_members::table
+                    .filter(spar_series_members::id.eq(member.id)),
+            )
+            .set(spar_series_members::email.eq(&form.email))
+            .execute(conn)?;
+
+            Ok(Some(Ok(Redirect::to(format!(
+                "/spar_series/{}/members/{}",
+                spar_series_id, spar_member_id
+            )))))
         })
         .unwrap()
     })

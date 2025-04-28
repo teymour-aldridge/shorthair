@@ -29,11 +29,13 @@ use email::send_mail;
 use maud::{html, Markup, PreEscaped};
 use qrcode::{render::svg, EcLevel, QrCode, Version};
 use rocket::response::{status::Unauthorized, Flash, Redirect};
+use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::{
     html::{error_403, error_404, page_of_body},
     permissions::{has_permission, Permission},
+    request_ids::TracingSpan,
 };
 
 use super::{
@@ -205,8 +207,12 @@ pub async fn single_spar_overview_for_admin_page(
                                         th scope="row" { (i + 1) }
                                         // todo: restrict set of allowed usernames
                                         td { (signup.member.name) }
-                                        td { (signup.as_judge) }
-                                        td { (signup.as_speaker) }
+                                        td class=(if signup.as_judge { "bg-success text-white" } else { "bg-danger text-white" }) {
+                                            (signup.as_judge)
+                                        }
+                                        td class=(if signup.as_speaker { "bg-success text-white" } else { "bg-danger text-white" }) {
+                                            (signup.as_speaker)
+                                        }
                                     }
                                 }
                             }
@@ -280,6 +286,17 @@ pub async fn single_spar_overview_for_participants_page(
                 .optional()?;
 
             if let Some(spar) = spar {
+                if !spar.release_draw {
+                    return Ok(Some(page_of_body(html! {
+                        div class="alert alert-info" role="alert" {
+                            h4 class="alert-heading" { "Draw Not Available" }
+                            p {
+                                "The draw for this spar has not yet been released by the organizers."
+                            }
+                        }
+                    }, user)));
+                }
+
                 let draw_info: Vec<SparRoomRepr> = {
                     let spar_id = spar.id;
                     let room_ids = spar_rooms::table
@@ -383,11 +400,16 @@ pub async fn set_is_open(
 #[post("/spars/<session_id>/makedraw")]
 /// Generate the draw for the internal sessions.
 ///
+/// TODO: fix the concurrency behaviour of this code (e.g. might want a
+/// ticketing system, so that users can override old draw generations if they
+/// would like to)
+///
 /// TODO: we ideally want a way to preview the new draw before adopting it.
 pub async fn generate_draw(
     user: User,
     session_id: &str,
     db: DbConn,
+    span: TracingSpan,
 ) -> Option<Result<Flash<Redirect>, Unauthorized<()>>> {
     let session_id = session_id.to_string();
     let db = Arc::new(db);
@@ -465,6 +487,7 @@ pub async fn generate_draw(
             // todo: run this outside of the transaction
             let rooms = {
                 let elo_scores = ratings::compute_scores(spar.spar_series_id, conn)?;
+                ratings::trace_scores(&elo_scores);
                 let params = solve_lp(signups.clone(), elo_scores);
                 rooms_of_speaker_assignments(&params)
             };
@@ -543,6 +566,7 @@ pub async fn generate_draw(
             ))))
         })
     })
+    .instrument(span.0)
     .await
     .unwrap()
 }

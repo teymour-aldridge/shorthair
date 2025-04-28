@@ -201,3 +201,9 @@ pub fn compute_scores(
         .map(|(id, score)| (id, score.rating))
         .collect())
 }
+
+pub fn trace_scores(scores: &HashMap<i64, f64>) {
+    for (id, score) in scores {
+        tracing::trace!("Elo score for user with id {id} is {score}");
+    }
+}
