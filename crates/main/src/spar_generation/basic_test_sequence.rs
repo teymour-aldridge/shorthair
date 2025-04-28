@@ -5,8 +5,8 @@
 use crate::auth::login::PasswordLoginForm;
 use crate::groups::CreateSparSeriesForm;
 use crate::spar_generation::ballots::BpBallotForm;
-use crate::spar_generation::signup_for_spar::SignupForSpar;
-use crate::spar_generation::spar_series_routes::{
+use crate::spar_generation::individual_spars::signup_routes::SignupForSpar;
+use crate::spar_generation::spar_series::admin_routes::{
     ApproveJoinRequestForm, MakeSessionForm, Request2JoinSparSeriesForm,
 };
 use crate::{

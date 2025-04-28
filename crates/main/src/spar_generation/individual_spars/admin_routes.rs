@@ -36,11 +36,9 @@ use crate::{
     html::{error_403, error_404, page_of_body},
     permissions::{has_permission, Permission},
     request_ids::TracingSpan,
-};
-
-use super::{
-    ratings,
-    solve_allocation::{rooms_of_speaker_assignments, solve_lp, Team},
+    spar_generation::allocation_problem::solve_allocation::{
+        rooms_of_speaker_assignments, solve_lp, Team,
+    },
 };
 
 #[derive(Debug, Clone, Copy, FromFormField)]
@@ -401,8 +399,8 @@ pub async fn set_is_open(
 /// Generate the draw for the internal sessions.
 ///
 /// TODO: fix the concurrency behaviour of this code (e.g. might want a
-/// ticketing system, so that users can override old draw generations if they
-/// would like to)
+/// ticketing system, so that users can override long-running in-progress
+/// draw generations if they would like to)
 ///
 /// TODO: we ideally want a way to preview the new draw before adopting it.
 pub async fn generate_draw(
@@ -486,8 +484,8 @@ pub async fn generate_draw(
 
             // todo: run this outside of the transaction
             let rooms = {
-                let elo_scores = ratings::compute_scores(spar.spar_series_id, conn)?;
-                ratings::trace_scores(&elo_scores);
+                let elo_scores = crate::spar_generation::allocation_problem::ratings::compute_scores(spar.spar_series_id, conn)?;
+                crate::spar_generation::allocation_problem::ratings::trace_scores(&elo_scores);
                 let params = solve_lp(signups.clone(), elo_scores);
                 rooms_of_speaker_assignments(&params)
             };

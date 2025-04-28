@@ -202,6 +202,8 @@ pub fn compute_scores(
         .collect())
 }
 
+/// Adds debug information about ELO scores (this can be helpful in ensuring
+/// that they have been correctly calculated).
 pub fn trace_scores(scores: &HashMap<i64, f64>) {
     for (id, score) in scores {
         tracing::trace!("Elo score for user with id {id} is {score}");
