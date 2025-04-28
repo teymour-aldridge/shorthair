@@ -1,6 +1,6 @@
 #![feature(coverage_attribute)]
 
-use std::{collections::HashMap, io::Cursor};
+use std::collections::HashMap;
 
 use accounts::account_page;
 use admin::{
@@ -16,6 +16,7 @@ use auth::{
         do_login_with_code, do_password_login, login_page, login_with_password,
     },
     logout,
+    profile::{do_set_password, profile_page},
     register::{do_register, register_page},
 };
 use db::{user::User, DbConn};
@@ -47,10 +48,8 @@ use rocket::{
         util::map,
         value::{Map, Value},
     },
-    http::ContentType,
     Build, Rocket,
 };
-use sentry_tracing::EventFilter;
 use spar_generation::spar_series_routes::{
     add_member_page, approve_join_request, do_add_member, do_make_session,
     do_request2join_spar_series, internal_page, make_session_page,
@@ -259,12 +258,12 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 md.module_path()
                     .map(|path| {
                         if path.contains("hyper") || path.contains("rocket") {
-                            EventFilter::Ignore
+                            sentry_tracing::EventFilter::Ignore
                         } else {
-                            EventFilter::Breadcrumb
+                            sentry_tracing::EventFilter::Breadcrumb
                         }
                     })
-                    .unwrap_or(EventFilter::Breadcrumb)
+                    .unwrap_or(sentry_tracing::EventFilter::Breadcrumb)
             }))
             .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 EnvFilter::new("trace")
@@ -370,7 +369,9 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 accept_invite_page,
                 do_accept_invite,
                 vendored_css,
-                vendored_htmx
+                vendored_htmx,
+                profile_page,
+                do_set_password
             ],
         )
         .attach(RequestIdFairing)

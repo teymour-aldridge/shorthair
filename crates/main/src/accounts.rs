@@ -23,6 +23,15 @@ pub async fn account_page(user: User, db: DbConn, span: TracingSpan) -> Markup {
 
             let markup = maud::html!(
                 h1 {"Hello " (user.username.clone().unwrap_or("Unnamed user".to_string()))}
+
+                h3 {"Quick actions"}
+
+                ul {
+                    li {
+                        a href="/user/auth" {"Change password"}
+                    }
+                }
+
                 h3 {"My groups"}
                 table class="table" {
                     thead {

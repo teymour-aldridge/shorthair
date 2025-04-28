@@ -239,6 +239,7 @@ pub async fn accept_invite_page(
     invite_code: &str,
     user: Option<User>,
     db: DbConn,
+    span: TracingSpan,
 ) -> Result<Markup, Markup> {
     let invite_code = invite_code.to_string();
     db.run(move |conn| {
@@ -247,9 +248,13 @@ pub async fn accept_invite_page(
                 return Ok(Err(error_403(Some("Error: you cannot accept an invite as a logged-in user."), user)))
             }
 
+            tracing::info!("Displaying invite page for invite with code {}", invite_code);
+
             if !check_invite_is_valid(&invite_code, conn) {
                 return Ok(Err(error_403(Some("Error: that invite is not valid."), user)))
             }
+
+            tracing::trace!("Code is valid");
 
             let invite = account_invites::table.filter(account_invites::code.eq(&invite_code)).first::<AccountInvite>(conn).unwrap();
 
@@ -263,6 +268,7 @@ pub async fn accept_invite_page(
             ))
         }).unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -314,6 +320,7 @@ pub async fn do_accept_invite(
     db: DbConn,
     user: Option<User>,
     req_id: RequestId,
+    span: TracingSpan,
 ) -> Result<Redirect, Markup> {
     let invite_code = invite_code.to_string();
     db.run(move |conn| {
@@ -326,12 +333,18 @@ pub async fn do_accept_invite(
                 )));
             }
 
+            tracing::info!("Now processing join using invite (invite code {invite_code})");
+
             if !check_invite_is_valid(&invite_code, conn) {
+                tracing::trace!("Invite invalid!");
                 return Ok(Err(error_403(Some("Error: that invite is not valid (it may have expired)."), user)));
             }
+
             let invite = account_invites::table.filter(account_invites::code.eq(invite_code)).first::<AccountInvite>(conn).unwrap();
 
             if invite.email != form.email.to_ascii_lowercase().trim() {
+                tracing::trace!("Email on the invite database object ({}) doesn't match
+                                    the invite provided via the form ({})", invite.email, form.email);
                 return Ok(
                     Err(
                         error_403(Some(format!("Error: the email address from your form
@@ -405,5 +418,5 @@ pub async fn do_accept_invite(
         })
         .unwrap()
     })
-    .await
+    .instrument(span.0).await
 }

@@ -117,6 +117,6 @@ mod regressions {
 
     #[test]
     fn regressions() {
-        let runner = make_test_runner();
+        let _runner = make_test_runner();
     }
 }
