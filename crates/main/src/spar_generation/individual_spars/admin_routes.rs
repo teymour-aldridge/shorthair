@@ -20,9 +20,11 @@ use db::{
 };
 
 use diesel::{
+    connection::LoadConnection,
     dsl::{exists, select},
     insert_into,
     prelude::*,
+    sqlite::Sqlite,
 };
 use either::Either;
 use email::send_mail;
@@ -689,7 +691,7 @@ pub async fn show_draw_to_admin_page(
 // or at least place in the same module
 fn ballots_of_rooms(
     rooms: &[SparRoomRepr],
-    conn: &mut SqliteConnection,
+    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
 ) -> Result<HashMap<i64, BallotRepr>, diesel::result::Error> {
     let mut ret = HashMap::with_capacity(rooms.len() * 3);
     for room in rooms {

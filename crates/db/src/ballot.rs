@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use arbitrary::Arbitrary;
 use chrono::NaiveDateTime;
-use diesel::prelude::*;
+use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
@@ -77,7 +77,7 @@ impl BallotRepr {
     /// the adjudicator_ballots table.
     pub fn of_id(
         id: i64,
-        conn: &mut SqliteConnection,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
     ) -> Result<Self, diesel::result::Error> {
         let ballot = adjudicator_ballots::table
             .filter(adjudicator_ballots::id.eq(id))

@@ -21,7 +21,9 @@ use db::schema::{
 };
 use db::spar::{Spar, SparRoom, SparSeries, SparSeriesMember};
 use db::{group::Group, schema::groups};
+use diesel::connection::LoadConnection;
 use diesel::prelude::*;
+use diesel::sqlite::Sqlite;
 use diesel::SqliteConnection;
 use rocket::http::ContentType;
 use rocket::local::blocking::Client;
@@ -403,7 +405,10 @@ fn mark_spar_complete(rocket: &Client, spar: Spar) {
         .dispatch();
 }
 
-fn submit_ballot(rocket: &Client, conn: &mut SqliteConnection) {
+fn submit_ballot(
+    rocket: &Client,
+    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+) {
     let ballot_link = spar_adjudicator_ballot_links::table
         .order_by(spar_adjudicator_ballot_links::created_at.desc())
         .first::<AdjudicatorBallotLink>(conn)

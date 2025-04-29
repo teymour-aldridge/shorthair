@@ -19,7 +19,7 @@ use db::{
     schema::{adjudicator_ballots, spar_rooms, spar_series_members, spars},
     spar::SparRoom,
 };
-use diesel::{prelude::*, SqliteConnection};
+use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use skillratings::{
     weng_lin::{weng_lin_multi_team, WengLinConfig, WengLinRating},
     MultiTeamOutcome,
@@ -28,7 +28,7 @@ use skillratings::{
 /// Compute scores for each player.
 pub fn compute_scores(
     series_id: i64,
-    conn: &mut SqliteConnection,
+    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
 ) -> Result<HashMap<i64, f64>, diesel::result::Error> {
     let rooms_with_results = spar_rooms::table
         .inner_join(spars::table)

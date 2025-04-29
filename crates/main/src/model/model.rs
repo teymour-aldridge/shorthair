@@ -14,8 +14,8 @@ use db::{
     },
     user::User,
 };
-use diesel::prelude::*;
-use diesel::{OptionalExtension, SqliteConnection};
+use diesel::OptionalExtension;
+use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use fuzzcheck::DefaultMutator;
 use fuzzcheck_util::usize_u64_mutator::{
     usize_within_range_mutator, UsizeWithinRangeMutator,
@@ -88,7 +88,7 @@ impl State {
 
     /// Delete all rows in the database.
     pub fn reset_db(
-        conn: &mut SqliteConnection,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
     ) -> Result<(), diesel::result::Error> {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             diesel::delete(db::schema::adjudicator_ballots::table)
@@ -141,7 +141,11 @@ impl State {
     /// Steps through the provided actions. The application is always run first
     /// (as the model relies on the application in order to generate
     /// synchronized identifiers).
-    pub fn run(&mut self, actions: &[Action], conn: &mut SqliteConnection) {
+    pub fn run(
+        &mut self,
+        actions: &[Action],
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         for action in actions {
             self.step_app(action);
             self.step_model(action, conn);
@@ -157,7 +161,10 @@ impl State {
     ///
     /// TODO: might speed up the fuzzer if we return a Result (with detailed
     /// error information) rather than panicking here.
-    pub fn assert_matches_database(&self, conn: &mut SqliteConnection) {
+    pub fn assert_matches_database(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             self.check_users(conn);
             self.check_groups(conn);
@@ -175,7 +182,10 @@ impl State {
         .unwrap()
     }
 
-    fn check_ballots(&self, conn: &mut SqliteConnection) {
+    fn check_ballots(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let ballot_count = db::schema::adjudicator_ballots::table
             .count()
             .get_result::<i64>(conn)
@@ -197,7 +207,10 @@ impl State {
         }
     }
 
-    fn check_speakers(&self, conn: &mut SqliteConnection) {
+    fn check_speakers(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let speaker_count = db::schema::spar_speakers::table
             .count()
             .get_result::<i64>(conn)
@@ -221,7 +234,10 @@ impl State {
         }
     }
 
-    fn check_adjs(&self, conn: &mut SqliteConnection) {
+    fn check_adjs(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let adj_count = db::schema::spar_adjudicators::table
             .count()
             .get_result::<i64>(conn)
@@ -246,7 +262,10 @@ impl State {
         }
     }
 
-    fn check_teams(&self, conn: &mut SqliteConnection) {
+    fn check_teams(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let team_count = db::schema::spar_teams::table
             .count()
             .get_result::<i64>(conn)
@@ -264,7 +283,10 @@ impl State {
         }
     }
 
-    fn check_rooms(&self, conn: &mut SqliteConnection) {
+    fn check_rooms(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let room_count = db::schema::spar_rooms::table
             .count()
             .get_result::<i64>(conn)
@@ -281,7 +303,10 @@ impl State {
         }
     }
 
-    fn check_spar_series_members(&self, conn: &mut SqliteConnection) {
+    fn check_spar_series_members(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let member_count = db::schema::spar_series_members::table
             .count()
             .get_result::<i64>(conn)
@@ -306,7 +331,10 @@ impl State {
         }
     }
 
-    fn check_spar_signups(&self, conn: &mut SqliteConnection) {
+    fn check_spar_signups(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let signup_count = db::schema::spar_signups::table
             .count()
             .get_result::<i64>(conn)
@@ -327,7 +355,10 @@ impl State {
         }
     }
 
-    fn check_spars(&self, conn: &mut SqliteConnection) {
+    fn check_spars(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let spar_count = db::schema::spars::table
             .count()
             .get_result::<i64>(conn)
@@ -345,7 +376,10 @@ impl State {
         }
     }
 
-    fn check_spar_series(&self, conn: &mut SqliteConnection) {
+    fn check_spar_series(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let series_count = db::schema::spar_series::table
             .count()
             .get_result::<i64>(conn)
@@ -369,7 +403,10 @@ impl State {
         }
     }
 
-    fn check_groups(&self, conn: &mut SqliteConnection) {
+    fn check_groups(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let group_count = db::schema::groups::table
             .count()
             .get_result::<i64>(conn)
@@ -388,7 +425,10 @@ impl State {
         }
     }
 
-    fn check_users(&self, conn: &mut SqliteConnection) {
+    fn check_users(
+        &self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let count = users::table.count().get_result::<i64>(conn).unwrap();
         assert_eq!(count as usize, self.users.len());
         for user in &self.users {
@@ -412,7 +452,10 @@ impl State {
     ///
     /// We do this mostly for the spar draw generation functionality, as this is
     /// not tested by the model (it is has some manual tests).
-    fn sync(&mut self, conn: &mut SqliteConnection) {
+    fn sync(
+        &mut self,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         let active_user =
             self.active_user.as_ref().map(|user| user.public_id.clone());
         let user_passwords = self
@@ -568,14 +611,22 @@ impl State {
     }
 
     /// Do a single state transition.
-    pub fn step(&mut self, action: &Action, conn: &mut SqliteConnection) {
+    pub fn step(
+        &mut self,
+        action: &Action,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         self.step_model(action, conn);
         self.step_app(action);
         self.assert_matches_database(conn);
     }
 
     /// Apply action to the model.
-    fn step_model(&mut self, action: &Action, conn: &mut SqliteConnection) {
+    fn step_model(
+        &mut self,
+        action: &Action,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) {
         match action {
             Action::Setup(user) => {
                 if self.users.is_empty() {

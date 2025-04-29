@@ -163,6 +163,7 @@ pub async fn do_spar_signup_search(
                     .bind::<diesel::sql_types::Text, _>(format!("{}*", query))
                     .load::<SparSeriesMember>(conn)?;
 
+
                 let search_results = maud::html! {
                     hr {}
 

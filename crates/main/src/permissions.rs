@@ -1,5 +1,5 @@
 use db::{group::GroupMember, schema::group_members, user::User};
-use diesel::{prelude::*, SqliteConnection};
+use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 
 use crate::resources::GroupRef;
 
@@ -23,7 +23,7 @@ pub enum Permission {
 pub fn has_permission(
     user: Option<&User>,
     permission: &Permission,
-    conn: &mut SqliteConnection,
+    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
 ) -> bool {
     match permission {
         Permission::CreateNewGroup => {
@@ -46,7 +46,9 @@ pub fn has_permission(
     }
 }
 
-fn check_if_registrations_are_open(conn: &mut SqliteConnection) -> bool {
+fn check_if_registrations_are_open(
+    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+) -> bool {
     let disable_signups = db::schema::config::table
         .filter(db::schema::config::key.eq(&"disable_signups"))
         .select(db::schema::config::value)
@@ -64,7 +66,7 @@ fn check_if_registrations_are_open(conn: &mut SqliteConnection) -> bool {
 
 fn check_delete_resource_in_group(
     user: Option<&User>,
-    conn: &mut SqliteConnection,
+    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
     group_id: &i64,
 ) -> bool {
     let user = match user {
@@ -88,7 +90,7 @@ fn check_delete_resource_in_group(
 
 fn check_modify_resource_in_group(
     user: Option<&User>,
-    conn: &mut SqliteConnection,
+    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
     group_id: &i64,
 ) -> bool {
     let user = match user {

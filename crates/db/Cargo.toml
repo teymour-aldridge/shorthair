@@ -9,13 +9,14 @@ serde = { version = "1.0.215", features = ["derive"] }
 serde_json = "1.0.132"
 reqwest = "0.12.9"
 deadpool-diesel = { version = "0.6.1", features = ["sqlite"] }
-diesel-async = { version = "0.5.2", features = ["async-connection-wrapper"] }
 arbitrary = { version = "1.4.1", features = ["derive"] }
 itertools = "0.14.0"
 fuzzcheck = { git = "https://github.com/loiclec/fuzzcheck-rs" }
 fuzzcheck-util = { path = "../fuzzcheck-util" }
 regex = "1.11.1"
 once_cell = "1.20.3"
+diesel-tracing = { version = "0.3.1", features = ["sqlite", "r2d2"] }
+tracing = "0.1.41"
 
 [dependencies.rocket]
 version = "0.5.1"

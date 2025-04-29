@@ -4,8 +4,9 @@
 use std::collections::HashMap;
 
 use arbitrary::Arbitrary;
+use diesel::connection::LoadConnection;
 use diesel::prelude::*;
-use diesel::SqliteConnection;
+use diesel::sqlite::Sqlite;
 use fuzzcheck::DefaultMutator;
 use serde::Serialize;
 
@@ -43,14 +44,14 @@ pub struct SparRoom {
 impl SparRoom {
     pub fn repr(
         &self,
-        conn: &mut SqliteConnection,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
     ) -> Result<SparRoomRepr, diesel::result::Error> {
         SparRoomRepr::of_id(self.id, conn)
     }
 
     pub fn canonical_ballot(
         &self,
-        conn: &mut SqliteConnection,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
     ) -> Result<Option<BallotRepr>, diesel::result::Error> {
         let id = adjudicator_ballots::table
             .filter(adjudicator_ballots::room_id.eq(self.id))
@@ -58,6 +59,7 @@ impl SparRoom {
             .select(adjudicator_ballots::id)
             .first::<i64>(conn)
             .optional()?;
+
         match id {
             Some(id) => Ok(Some(BallotRepr::of_id(id, conn)?)),
             None => Ok(None),
@@ -84,7 +86,7 @@ pub struct SparRoomRepr {
 impl SparRoomRepr {
     pub fn of_id(
         room_id: i64,
-        conn: &mut SqliteConnection,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
     ) -> Result<Self, diesel::result::Error> {
         let room = spar_rooms::table
             .filter(spar_rooms::id.eq(room_id))

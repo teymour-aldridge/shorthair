@@ -13,7 +13,7 @@ use db::{
     user::User,
     DbConn,
 };
-use diesel::prelude::*;
+use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use fuzzcheck::DefaultMutator;
 use maud::Markup;
 use rocket::{form::Form, response::Redirect};
@@ -337,13 +337,15 @@ pub async fn do_submit_ballot(
                 }
             };
 
-            let id_of_speaker_uuid =
-                |uid: &str, conn: &mut SqliteConnection| {
-                    spar_speakers::table
-                        .filter(spar_speakers::public_id.eq(uid))
-                        .select(spar_speakers::id)
-                        .first::<i64>(conn)
-                };
+            fn id_of_speaker_uuid(
+                uid: &str,
+                conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+            ) -> Result<i64, diesel::result::Error> {
+                spar_speakers::table
+                    .filter(spar_speakers::public_id.eq(uid))
+                    .select(spar_speakers::id)
+                    .first::<i64>(conn)
+            }
 
             let room = SparRoomRepr::of_id(key.room_id, conn)?;
 

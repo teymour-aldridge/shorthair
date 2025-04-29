@@ -1,6 +1,8 @@
 use arbitrary::Arbitrary;
 use chrono::NaiveDateTime;
+use diesel::connection::LoadConnection;
 use diesel::prelude::*;
+use diesel::sqlite::Sqlite;
 use fuzzcheck::mutators::option::OptionMutator;
 use fuzzcheck::DefaultMutator;
 use fuzzcheck_util::chrono_mutators::{
@@ -75,7 +77,7 @@ impl Spar {
     /// recently submitted ballot is correct.
     pub fn canonical_ballots(
         &self,
-        conn: &mut SqliteConnection,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
     ) -> Result<Vec<BallotRepr>, diesel::result::Error> {
         let (b1, b2) = diesel::alias!(
             adjudicator_ballots as b1,
@@ -121,7 +123,7 @@ impl Spar {
     /// Loads all the rooms that are part of this spar.
     pub fn rooms(
         &self,
-        conn: &mut SqliteConnection,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
     ) -> Result<Vec<SparRoomRepr>, diesel::result::Error> {
         let rooms = spar_rooms::table
             .filter(spar_rooms::spar_id.eq(self.id))
@@ -160,7 +162,7 @@ pub struct SparSignupSerializer {
 impl SparSignupSerializer {
     pub fn from_db_ty(
         t: SparSignup,
-        conn: &mut SqliteConnection,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
     ) -> SparSignupSerializer {
         Self {
             id: t.id,
