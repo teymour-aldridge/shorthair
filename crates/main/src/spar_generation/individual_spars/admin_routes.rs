@@ -880,21 +880,16 @@ pub async fn do_mark_spar_complete(
                 None => return Ok(None),
             };
 
-            let user_id = user.id;
-            // todo: introduce proper permissions system
-            let user_has_permission = select(exists(
-                spar_series::table
-                    .filter(spar_series::id.eq(spar.spar_series_id))
-                    .inner_join(groups::table.inner_join(group_members::table))
-                    .filter(group_members::user_id.eq(user_id))
-                    .filter(
-                        group_members::is_admin
-                            .eq(true)
-                            .or(group_members::has_signing_power.eq(true)),
-                    ),
-            ))
-            .get_result::<bool>(conn)
-            .unwrap();
+            let user_has_permission = has_permission(
+                Some(&user),
+                &Permission::ModifyResourceInGroup(crate::resources::GroupRef(
+                    spar_series::table
+                        .filter(spar_series::id.eq(spar.spar_series_id))
+                        .select(spar_series::group_id)
+                        .first::<i64>(conn)?
+                )),
+                conn
+            );
 
             if !user_has_permission {
                 return Ok(Some(Err(error_403(
@@ -915,7 +910,7 @@ pub async fn do_mark_spar_complete(
 
                 let mut problems = Vec::with_capacity(2);
 
-                let rooms_without_ballots = spar_rooms::table
+                let rooms_with_ballots = spar_rooms::table
                     .filter(spar_rooms::spar_id.eq(spar.id))
                     .inner_join(adjudicator_ballots::table)
                     .select(spar_rooms::all_columns)
@@ -928,18 +923,20 @@ pub async fn do_mark_spar_complete(
                     .get_result::<i64>(conn)?;
 
                 assert!(
-                    rooms_without_ballots <= total_rooms,
-                    "error: rooms_without_ballots={rooms_without_ballots} and
+                    rooms_with_ballots <= total_rooms,
+                    "error: rooms_without_ballots={rooms_with_ballots} and
                             total_rooms={total_rooms}"
                 );
                 assert!(
-                    rooms_without_ballots >= 0,
-                    "rooms_without_ballots={rooms_without_ballots}"
+                    rooms_with_ballots >= 0,
+                    "rooms_without_ballots={rooms_with_ballots}"
                 );
+
+                let rooms_without_ballots = total_rooms - rooms_with_ballots;
 
                 if rooms_without_ballots > 0 {
                     problems.push(Problem::MissingBallots {
-                        count: (total_rooms - rooms_without_ballots) as usize,
+                        count: rooms_without_ballots as usize,
                     });
                 }
 
@@ -949,9 +946,9 @@ pub async fn do_mark_spar_complete(
 
                 if !problems.is_empty() {
                     return Ok(Some(Err(page_of_body(maud::html! {
-                        h1 { "Warning: Issues Found" }
+                        h1 { "Warning: problems found" }
                         p {
-                            "Some issues were found with marking this spar as complete:"
+                            "Some issues were found when marking this spar as complete:"
                         }
                         ul {
                             @for problem in &problems {
