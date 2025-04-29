@@ -6,55 +6,19 @@ pub fn page_of_body_and_flash_msg(
     flash: Option<String>,
     user: Option<User>,
 ) -> Markup {
-    html! {
-        (DOCTYPE)
-        html {
-            head {
-                title { "Eldemite" }
-                script src="/static/htmx.js" crossorigin="anonymous" {}
-                link href="/static/styles.css" rel="stylesheet" {}
-                meta name="viewport" content="width=device-width, initial-scale=1" {}
-            }
-            body {
-                nav class="navbar navbar-expand" style="background-color: #E32879" data-bs-theme="dark" {
-                    div class="container-fluid" {
-                        ul class="nav nav-justify-start" data-bs-theme="dark" {
-                            li class="nav-item" {
-                                a class="nav-link text-white" href="/" { "Home" }
-                            }
-                        }
-                        ul class="nav nav-justify-end" data-bs-theme="dark" {
-                            @if user.is_some() {
-                                li class="nav-item nav-justify-start" {
-                                    a class="nav-link text-white" aria-current="page" href="/user" { "Profile" }
-                                }
-                                li class="nav-item nav-justify-start" {
-                                    a class="nav-link text-white" aria-current="page" href="/logout" { "Logout" }
-                                }
-                            } @else {
-                                li {
-                                    a class="nav-link text-white" href="/login" { "Login" }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                @if let Some(flash_msg) = flash {
-                    div class="container mt-3" {
-                        div class="alert alert-danger" role="alert" {
-                            (flash_msg)
-                        }
-                    }
-                }
-                div class="container" {
-                    div class="mt-4" {
-                        (body)
+    page_of_body(
+        maud::html! {
+            @if let Some(flash_msg) = flash {
+                div class="container mt-3" {
+                    div class="alert alert-danger" role="alert" {
+                        (flash_msg)
                     }
                 }
             }
-        }
-    }
+            (body)
+        },
+        user,
+    )
 }
 
 /// Renders an HTML page with the provided body markup.
@@ -86,7 +50,7 @@ pub fn page_of_body(body: Markup, user: Option<User>) -> Markup {
                                 }
                             } @else {
                                 li {
-                                    a class="nav-link text-white" href="/login" { "Login" }
+                                    a class="nav-link text-white" href="/login" { "Admin" }
                                 }
                             }
                         }

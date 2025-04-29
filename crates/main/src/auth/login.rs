@@ -34,7 +34,7 @@ pub async fn login_with_password(
         ));
     }
 
-    let markup = login_with_password_form(None);
+    let markup = login_with_password_form(None, None);
     Ok(page_of_body(markup, user))
 }
 
@@ -85,9 +85,10 @@ pub async fn do_password_login(
                     } else {
                         return (
                             Ok(page_of_body(
-                                login_with_password_form(Some(
-                                    "Incorrect password.".to_string(),
-                                )),
+                                login_with_password_form(
+                                    Some("Incorrect password.".to_string()),
+                                    Some(&form),
+                                ),
                                 Some(user),
                             )),
                             None,
@@ -97,9 +98,10 @@ pub async fn do_password_login(
                 None => {
                     return (
                         Ok(page_of_body(
-                            login_with_password_form(Some(
-                                "No such user".to_string(),
-                            )),
+                            login_with_password_form(
+                                Some("No such user".to_string()),
+                                Some(&form),
+                            ),
                             user,
                         )),
                         None,
@@ -115,18 +117,41 @@ pub async fn do_password_login(
     ret
 }
 
-fn login_with_password_form(error: Option<String>) -> maud::Markup {
+fn login_with_password_form(
+    error: Option<String>,
+    prev: Option<&PasswordLoginForm>,
+) -> maud::Markup {
     maud::html! {
         div class="container" {
             @if let Some(err) = error {
-                div class="alert alert-danger" {
+                div class="alert alert-danger mb-4 mt-3" {
                     (err)
+                }
+            }
+
+            div class="alert alert-info mb-4" {
+                p {
+                    "If you are " b { "looking to sign up for a spar"}
+                    " you are in the wrong place!"
+                }
+
+
+                p {
+                    "This form is for administrators to log in. If you
+                        are looking to participate in a spar, you should instead
+                        go to the signup page for that spar."
+                }
+
+                p {
+                    "Please ask the person administrating your spar if you have
+                     any questions about this."
                 }
             }
             form method="post" {
                 div class="form-group" {
                     label for="email" { "Email address" }
-                    input type="email" class="form-control" id="email" name="email" placeholder="Enter email";
+                    input type="email" class="form-control" id="email" name="email" placeholder="Enter email"
+                        value=(prev.map(|p| p.email.clone()).unwrap_or_default());
                 }
                 div class="form-group" {
                     label for="password" { "Password" }
