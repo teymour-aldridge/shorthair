@@ -7,8 +7,10 @@ use db::{schema::spars, spar::Spar, user::User, DbConn};
 use diesel::prelude::*;
 use diesel::Connection;
 use maud::Markup;
+use tracing::Instrument;
 
 use crate::html::{error_404, page_of_body};
+use crate::request_ids::TracingSpan;
 use crate::spar_generation::ballots::render_ballot;
 
 #[get("/spar_series/<series_id>/results")]
@@ -20,8 +22,11 @@ pub async fn results_of_spar_series_page(
     series_id: String,
     user: Option<User>,
     db: DbConn,
+    span: TracingSpan,
 ) -> Markup {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let series = {
                 let t = spar_series::table
@@ -90,6 +95,7 @@ pub async fn results_of_spar_series_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -100,8 +106,11 @@ pub async fn results_of_spar_page(
     spar_id: String,
     user: Option<User>,
     db: DbConn,
+    span: TracingSpan,
 ) -> Option<Markup> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
@@ -171,5 +180,6 @@ pub async fn results_of_spar_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }

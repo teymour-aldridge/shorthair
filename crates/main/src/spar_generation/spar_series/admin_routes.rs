@@ -21,12 +21,14 @@ use rocket::{
     response::{status::Unauthorized, Redirect},
 };
 use serde::{Deserialize, Serialize};
+use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::{
     html::{error_403, page_of_body, page_title},
     model::sync::id::gen_uuid,
     permissions::{has_permission, Permission},
+    request_ids::TracingSpan,
     util::is_valid_email,
 };
 
@@ -36,8 +38,11 @@ pub async fn internal_page(
     internal_id: String,
     user: User,
     db: DbConn,
+    span: TracingSpan,
 ) -> Option<Result<Markup, Unauthorized<()>>> {
-    db.run(|conn| {
+    let span1 = span.0.clone();
+    db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
             let t = spar_series::table
                 .filter(spar_series::public_id.eq(internal_id))
@@ -121,6 +126,7 @@ pub async fn internal_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -130,8 +136,11 @@ pub async fn make_session_page(
     internal_id: String,
     user: User,
     db: DbConn,
+    span: TracingSpan,
 ) -> Option<Result<Markup, Unauthorized<()>>> {
-    db.run(|conn| {
+    let span1 = span.0.clone();
+    db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
             let t = spar_series::table
                 .filter(spar_series::public_id.eq(internal_id))
@@ -183,8 +192,11 @@ pub async fn do_make_session(
     user: User,
     db: DbConn,
     form: Form<MakeSessionForm>,
+    span: TracingSpan,
 ) -> Option<Result<Result<Markup, Redirect>, Unauthorized<()>>> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction::<_, diesel::result::Error, _>(move |conn| {
             let t = spar_series::table
                 .filter(spar_series::public_id.eq(internal_id))
@@ -276,6 +288,7 @@ pub async fn do_make_session(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -302,8 +315,11 @@ pub async fn add_member_page(
     internal_id: String,
     user: User,
     db: DbConn,
+    span: TracingSpan,
 ) -> Markup {
-    db.run(|conn| {
+    let span1 = span.0.clone();
+    db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let t = spar_series::table
                 .filter(spar_series::public_id.eq(internal_id))
@@ -349,6 +365,7 @@ pub async fn add_member_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -568,9 +585,23 @@ pub async fn do_request2join_spar_series(
             if !series.allow_join_requests {
                 // todo: standardise the error message
                 return Ok(Some(page_of_body(
-                    html! {h1 {"Error: join requests are closed for this spar"}},
+                    html! {h1 {"Error: join requests are closed for this spar series."}},
                     user,
                 )));
+            }
+
+            let existing_join_request = diesel::dsl::select(diesel::dsl::exists(
+                spar_series_join_requests::table
+                    .filter(spar_series_join_requests::name.eq(&form.name))
+                    .or_filter(spar_series_join_requests::email.eq(&form.email))
+            )).get_result::<bool>(conn).unwrap();
+            if existing_join_request {
+                let body = render_request2join_form(
+                    Some("Error: you have already requested to join this spar!"
+                        .to_string()),
+                    Some(&form),
+                );
+                return Ok(Some(page_of_body(body, user)))
             }
 
             let existing_member = spar_series_members::table
