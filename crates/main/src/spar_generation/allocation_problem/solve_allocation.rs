@@ -345,7 +345,11 @@ pub fn solve_lp(
         problem = problem.with(constraint);
     }
 
+    tracing::trace!("Constructed problem, now starting to solve problem");
+
     let solution = problem.solve().unwrap();
+
+    tracing::trace!("Solved problem!");
 
     let mut params = HashMap::new();
 

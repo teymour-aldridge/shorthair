@@ -28,12 +28,15 @@ use either::Either;
 use email::send_mail;
 use maud::{html, Markup, PreEscaped};
 use qrcode::{render::svg, EcLevel, QrCode, Version};
-use rocket::response::{status::Unauthorized, Flash, Redirect};
+use rocket::{
+    request::FlashMessage,
+    response::{status::Unauthorized, Flash, Redirect},
+};
 use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::{
-    html::{error_403, error_404, page_of_body},
+    html::{error_403, error_404, page_of_body, page_of_body_and_flash_msg},
     permissions::{has_permission, Permission},
     request_ids::TracingSpan,
     spar_generation::allocation_problem::solve_allocation::{
@@ -91,9 +94,13 @@ pub async fn single_spar_overview_for_admin_page(
     db: DbConn,
     user: User,
     tab: Option<SparAdminTab>,
+    msg: Option<FlashMessage<'_>>,
+    span: TracingSpan,
 ) -> Option<Result<Markup, Unauthorized<()>>> {
     let spar_id = spar_id.to_string();
+    let msg = msg.map(|msg| msg.message().to_string());
     db.run(move |conn| {
+        let _guard = span.0.enter();
         conn.transaction::<_, diesel::result::Error, _>(move |conn| {
             let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
@@ -233,8 +240,22 @@ pub async fn single_spar_overview_for_admin_page(
             let signups_is_active = if matches!(tab, Some(SparAdminTab::Signups)) {"active"} else {""};
             let settings_is_active = if matches!(tab, Some(SparAdminTab::Settings)) {"active"} else {""};
 
-            Ok(Some(Ok(page_of_body(
+            Ok(Some(Ok(page_of_body_and_flash_msg(
                 html! {
+                    div class="d-flex justify-content-between align-items-center mb-3" {
+                        a href=(format!("/spar_series/{}", spar_series.public_id)) class="btn btn-secondary" {
+                            "← Back to spar series"
+                        }
+                        @if !spar.is_complete {
+                            form method="post" action=(format!("/spars/{}/mark_complete", spar.public_id)) {
+                                button class="btn btn-primary" type="submit" {
+                                    "Mark Complete"
+                                }
+                            }
+                        }
+                    }
+
+
                     h1 {
                         "Spar session taking place at "
                         span class="render-date" { (spar.start_time) }
@@ -261,6 +282,7 @@ pub async fn single_spar_overview_for_admin_page(
 
                     (page)
                 },
+                msg,
                 Some(user),
             ))))
         })
@@ -411,7 +433,9 @@ pub async fn generate_draw(
 ) -> Option<Result<Flash<Redirect>, Unauthorized<()>>> {
     let session_id = session_id.to_string();
     let db = Arc::new(db);
+    let span1 = span.0.clone();
     db.clone().run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(move |conn| {
             let sid = session_id.clone();
             let spar = spars::table
@@ -424,6 +448,8 @@ pub async fn generate_draw(
                 Some(session) => session,
                 None => return Ok(None),
             };
+
+            tracing::trace!("Spar exists");
 
             let user_id = user.id;
             let user_has_permission = select(exists(
@@ -443,6 +469,8 @@ pub async fn generate_draw(
             if !user_has_permission {
                 return Ok::<_, diesel::result::Error>(Some(Err(Unauthorized(()))));
             }
+
+            tracing::trace!("User has permission");
 
             let signups = Arc::new(spar_signups::table
                 .filter(spar_signups::spar_id.eq(spar.id))
@@ -474,13 +502,16 @@ pub async fn generate_draw(
                 // enough people to form a debate
                 if n_judges * 8 < n_people_only_willing_to_speak {
                     return Ok(Some(Ok(Flash::error(
-                        Redirect::to(format!("/spars/{}", spar.id)),
+                        Redirect::to(format!("/spars/{}", spar.public_id)),
                         // todo: format numbers
                         "Error: too few people willing to judge for a British
                         Parliamentary session (assuming 1 judge and 8 people)!",
                     ))));
                 }
             };
+
+            tracing::trace!("Basic checks to ensure a valid draw can be
+                             generated were met");
 
             // todo: run this outside of the transaction
             let rooms = {
@@ -489,6 +520,8 @@ pub async fn generate_draw(
                 let params = solve_lp(signups.clone(), elo_scores);
                 rooms_of_speaker_assignments(&params)
             };
+
+            tracing::trace!("Generated room assignments");
 
             diesel::delete(spar_rooms::table.filter(spar_rooms::spar_id.eq(spar.id))).execute(conn)?;
 
@@ -912,6 +945,40 @@ pub async fn do_mark_spar_complete(
 
                 if total_rooms == 0 {
                     problems.push(Problem::NoSparStarted);
+                }
+
+                if !problems.is_empty() {
+                    return Ok(Some(Err(page_of_body(maud::html! {
+                        h1 { "Warning: Issues Found" }
+                        p {
+                            "Some issues were found with marking this spar as complete:"
+                        }
+                        ul {
+                            @for problem in &problems {
+                                li {
+                                    @match problem {
+                                        Problem::MissingBallots { count } => {
+                                            "Missing ballots: " (count) " rooms don't have ballots submitted"
+                                        }
+                                        Problem::NoSparStarted => {
+                                            "No draw was generated for this spar"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        p {
+                            "You can still mark this spar as complete by using the form below, but you may want to address these issues first."
+                        }
+                        form method="post" action=(format!("/spars/{}/mark_complete?force=true", spar.public_id)) {
+                            button class="btn btn-danger" type="submit" {
+                                "Mark as complete anyway"
+                            }
+                        }
+                        a href=(format!("/spars/{}", spar.public_id)) class="btn btn-secondary" {
+                            "Cancel"
+                        }
+                    }, Some(user)))))
                 }
             }
 

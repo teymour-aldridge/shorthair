@@ -231,6 +231,11 @@ pub async fn register_for_spar_page(
             };
 
             if spar.release_draw || !spar.is_open {
+                tracing::trace!(
+                    "Branch not taken (release_draw={}, is_open={})",
+                    spar.release_draw,
+                    spar.is_open
+                );
                 return Ok(Some(error_403(
                     Some(
                         "Error: the draw for this spar has already been
@@ -246,6 +251,8 @@ pub async fn register_for_spar_page(
                 .filter(spar_signups::member_id.eq(member.id))
                 .first::<SparSignup>(conn)
                 .optional()?;
+
+            tracing::trace!("Previous spar signup is {prev:?}");
 
             let markup = maud::html! {
                 form method="post" class="form" {
@@ -318,6 +325,7 @@ pub async fn do_register_for_spar(
                 .unwrap();
 
             if spar.release_draw || !spar.is_open {
+                tracing::trace!("Returning as the spar has not been released");
                 return Ok(error_403(
                     Some(
                         "Error: the draw for this spar has already been
@@ -333,7 +341,7 @@ pub async fn do_register_for_spar(
                 .first::<SparSeriesMember>(conn)
                 .unwrap();
 
-            diesel::insert_into(spar_signups::table)
+            let n = diesel::insert_into(spar_signups::table)
                 .values((
                     spar_signups::public_id.eq(gen_uuid().to_string()),
                     spar_signups::spar_id.eq(spar.id),
@@ -349,6 +357,14 @@ pub async fn do_register_for_spar(
                 ))
                 .execute(conn)
                 .unwrap();
+            assert_eq!(n, 1);
+
+            tracing::trace!(
+                "Updated user {}, set as_judge={} and as_speaker={}",
+                member.id,
+                form.as_judge,
+                form.as_speaker
+            );
 
             Ok(page_of_body(
                 maud::html! {

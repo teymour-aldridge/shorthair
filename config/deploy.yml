@@ -19,7 +19,7 @@ volumes:
 proxy:
   ssl: true
   host: eldemite.net
-  # app_port: 3000
+  response_timeout: 180
 
 registry:
   server: ghcr.io
