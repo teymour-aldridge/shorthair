@@ -117,10 +117,14 @@ pub async fn single_spar_overview_for_admin_page(
                 }
             };
 
-            let spar_series = spar_series::table.filter(spar_series::id.eq(spar.id))
-                .first::<SparSeries>(conn)?;
+            let spar_series = spar_series::table.filter(spar_series::id.eq(spar.spar_series_id))
+                .first::<SparSeries>(conn).unwrap();
 
-            let user_has_permission = has_permission(Some(&user), &Permission::ModifyResourceInGroup(crate::resources::GroupRef(spar_series.group_id)), conn);
+            let user_has_permission = has_permission(
+                Some(&user),
+                &Permission::ModifyResourceInGroup(crate::resources::GroupRef(spar_series.group_id)),
+                conn
+            );
             if !user_has_permission {
                 rocket::info!("User with id {} unauthorized.", user.id);
                 return Ok(Some(Err(Unauthorized(()))));

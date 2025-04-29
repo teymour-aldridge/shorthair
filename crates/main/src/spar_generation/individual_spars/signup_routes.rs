@@ -14,10 +14,12 @@ use diesel::Connection;
 use maud::Markup;
 use rocket::form::Form;
 use serde::Serialize;
+use tracing::Instrument;
 
 use crate::{
     html::{error_403, page_of_body},
     model::sync::id::gen_uuid,
+    request_ids::TracingSpan,
 };
 
 #[get("/spars/<spar_id>/signup")]
@@ -129,8 +131,11 @@ pub async fn do_spar_signup_search(
     db: DbConn,
     search: Form<SearchForm>,
     user: Option<User>,
+    span: TracingSpan,
 ) -> Option<Markup> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
@@ -150,19 +155,21 @@ pub async fn do_spar_signup_search(
             }
 
             if let Some(spar) = spar {
-                let raw_query = format!(
-                    "SELECT ssm.*
+                let fts_query = query.chars().filter(|char| {
+                    char.is_alphanumeric() || char.is_ascii_whitespace()
+                }).collect::<String>();
+
+                let raw_query =
+                    r#"SELECT ssm.*
                      FROM spar_series_members_fts fts
                      INNER JOIN spar_series_members ssm ON ssm.id = fts.rowid
-                     WHERE ssm.spar_series_id = ? AND fts.name MATCH ?
-                     ORDER BY rank"
-                );
+                     WHERE ssm.spar_series_id = ? AND fts.name MATCH (?)||'*'
+                     ORDER BY rank"#;
 
                 let matches = diesel::sql_query(raw_query)
                     .bind::<diesel::sql_types::BigInt, _>(spar.spar_series_id)
-                    .bind::<diesel::sql_types::Text, _>(format!("{}*", query))
-                    .load::<SparSeriesMember>(conn)?;
-
+                    .bind::<diesel::sql_types::Text, _>(fts_query)
+                    .load::<SparSeriesMember>(conn).unwrap();
 
                 let search_results = maud::html! {
                     hr {}
@@ -204,6 +211,7 @@ pub async fn do_spar_signup_search(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
