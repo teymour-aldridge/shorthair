@@ -26,6 +26,7 @@ use skillratings::{
 };
 
 /// Compute scores for each player.
+#[tracing::instrument(skip(conn))]
 pub fn compute_scores(
     series_id: i64,
     conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
@@ -200,12 +201,4 @@ pub fn compute_scores(
         .into_iter()
         .map(|(id, score)| (id, score.rating))
         .collect())
-}
-
-/// Adds debug information about ELO scores (this can be helpful in ensuring
-/// that they have been correctly calculated).
-pub fn trace_scores(scores: &HashMap<i64, f64>) {
-    for (id, score) in scores {
-        tracing::trace!("Elo score for user with id {id} is {score}");
-    }
 }

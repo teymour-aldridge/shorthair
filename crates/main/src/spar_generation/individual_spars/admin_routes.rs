@@ -302,9 +302,12 @@ pub async fn single_spar_overview_for_participants_page(
     user: Option<User>,
     db: DbConn,
     spar_id: &str,
+    span: TracingSpan,
 ) -> Option<Markup> {
     let spar_id = spar_id.to_string();
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.clone();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
                 .filter(spars::public_id.eq(spar_id))
@@ -353,6 +356,7 @@ pub async fn single_spar_overview_for_participants_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -363,9 +367,12 @@ pub async fn set_is_open(
     user: User,
     spar_id: &str,
     state: bool,
+    span: TracingSpan,
 ) -> Option<Markup> {
     let spar_id = spar_id.to_string();
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.clone();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
@@ -420,6 +427,7 @@ pub async fn set_is_open(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -521,8 +529,9 @@ pub async fn generate_draw(
 
             // todo: run this outside of the transaction
             let rooms = {
+                let span = tracing::info_span!("draw generation process");
+                let _guard = span.enter();
                 let elo_scores = crate::spar_generation::allocation_problem::ratings::compute_scores(spar.spar_series_id, conn)?;
-                crate::spar_generation::allocation_problem::ratings::trace_scores(&elo_scores);
                 let params = solve_lp(signups.clone(), elo_scores);
                 rooms_of_speaker_assignments(&params)
             };
@@ -530,6 +539,9 @@ pub async fn generate_draw(
             tracing::trace!("Generated room assignments");
 
             diesel::delete(spar_rooms::table.filter(spar_rooms::spar_id.eq(spar.id))).execute(conn)?;
+
+            let span = tracing::info_span!("Inserting new rooms into database");
+            let guard = span.enter();
 
             for (_, room) in rooms {
                 let spar_room_id = diesel::insert_into(spar_rooms::table)
@@ -596,6 +608,8 @@ pub async fn generate_draw(
                     }
                 }
             }
+
+            drop(guard);
 
             Ok(Some(Ok(Flash::success(
                 Redirect::to(format!("/spars/{session_id}/showdraw")),

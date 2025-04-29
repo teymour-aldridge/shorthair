@@ -14,6 +14,7 @@ use good_lp::{
 
 /// Always remember: if it runs in polynomial time, it's efficient (for
 /// constructing the problem instance).
+#[tracing::instrument]
 pub fn solve_lp(
     person_and_signup_data: Arc<HashMap<i64, SparSignup>>,
     elo_scores: HashMap<i64, f64>,
@@ -425,6 +426,7 @@ pub struct SolverRoom {
     >,
 }
 
+#[tracing::instrument]
 pub fn rooms_of_speaker_assignments(
     params: &HashMap<i64, Assignment>,
 ) -> HashMap<usize, SolverRoom> {

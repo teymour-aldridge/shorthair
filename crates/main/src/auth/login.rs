@@ -132,7 +132,7 @@ fn login_with_password_form(
             div class="alert alert-info mb-4" {
                 p {
                     "If you are " b { "looking to sign up for a spar"}
-                    " you are in the wrong place!"
+                    ", you are in the wrong place!"
                 }
 
 
