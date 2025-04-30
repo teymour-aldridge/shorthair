@@ -7,9 +7,10 @@ use db::{
     room::SparRoomRepr,
     schema::{
         adjudicator_ballot_entries, adjudicator_ballots,
-        spar_adjudicator_ballot_links, spar_adjudicators, spar_series_members,
-        spar_speakers,
+        spar_adjudicator_ballot_links, spar_adjudicators, spar_rooms,
+        spar_series, spar_series_members, spar_speakers, spars,
     },
+    spar::Spar,
     user::User,
     DbConn,
 };
@@ -23,6 +24,7 @@ use tracing::Instrument;
 use crate::{
     html::{error_404, page_of_body},
     model::sync::id::gen_uuid,
+    permissions::{has_permission, Permission},
     request_ids::TracingSpan,
 };
 
@@ -729,30 +731,60 @@ pub async fn view_ballot(
     db.run(move |conn| {
         let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            let ballot = adjudicator_ballots::table
+            let ballot = match adjudicator_ballots::table
                 .filter(adjudicator_ballots::public_id.eq(&ballot_id))
                 .first::<AdjudicatorBallot>(conn)
-                .optional()?;
-
-            match ballot {
+                .optional()
+                .unwrap()
+            {
+                Some(b) => b,
                 None => return Ok(None),
-                Some(ballot) => {
-                    let adjudicator_name = spar_adjudicators::table
-                        .filter(spar_adjudicators::id.eq(ballot.adjudicator_id))
-                        .inner_join(spar_series_members::table)
-                        .select(spar_series_members::name)
-                        .first::<String>(conn)?;
-                    let repr = BallotRepr::of_id(ballot.id, conn)?;
-                    let room = SparRoomRepr::of_id(ballot.room_id, conn)?;
+            };
 
-                    let markup = maud::html! {
-                        h3 {"Ballot submitted by " (adjudicator_name)}
-                        (render_ballot(&room, &repr))
-                    };
+            let spar = spars::table
+                .inner_join(spar_rooms::table)
+                .filter(spar_rooms::id.eq(ballot.room_id))
+                .select(spars::all_columns)
+                .first::<Spar>(conn)
+                .unwrap();
 
-                    Ok(Some(page_of_body(markup, user)))
-                }
+            let has_permission = if spar.release_draw {
+                true
+            } else {
+                has_permission(
+                    user.as_ref(),
+                    &Permission::ModifyResourceInGroup(
+                        crate::resources::GroupRef(
+                            spar_series::table
+                                .filter(spar_series::id.eq(spar.spar_series_id))
+                                .select(spar_series::group_id)
+                                .first::<i64>(conn)
+                                .unwrap(),
+                        ),
+                    ),
+                    conn,
+                )
+            };
+
+            if !has_permission {
+                // todo: could return a more descriptive error message (?)
+                return Ok(None);
             }
+
+            let adjudicator_name = spar_adjudicators::table
+                .filter(spar_adjudicators::id.eq(ballot.adjudicator_id))
+                .inner_join(spar_series_members::table)
+                .select(spar_series_members::name)
+                .first::<String>(conn)?;
+            let repr = BallotRepr::of_id(ballot.id, conn)?;
+            let room = SparRoomRepr::of_id(ballot.room_id, conn)?;
+
+            let markup = maud::html! {
+                h3 {"Ballot submitted by " (adjudicator_name)}
+                (render_ballot(&room, &repr))
+            };
+
+            Ok(Some(page_of_body(markup, user)))
         })
         .unwrap()
     })
