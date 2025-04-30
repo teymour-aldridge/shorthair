@@ -95,18 +95,15 @@ pub fn solve_lp(
                 }
             }
 
-            // println!(
-            //     "Number of variables for judge/speaker constraints: {}",
-            //     vars.len()
-            // );
-            // println!(
-            //     "Number of constraints for judge/speaker constraints: {}",
-            //     constraints.len()
-            // );
+            tracing::trace!(
+                "Number of variables for judge/speaker constraints: {}",
+                vars.len()
+            );
+            tracing::trace!(
+                "Number of constraints for judge/speaker constraints: {}",
+                constraints.len()
+            );
 
-            // add constraint requiring each user to be allocated in exactly one
-            // position (we set sum [positions allocated] >= 1
-            //                  AND sum [positions_allocated] <= 1)
             let mut positions_allocated = Expression::default();
             for room in 0..r_max {
                 for role in 0..=4usize {
@@ -120,15 +117,14 @@ pub fn solve_lp(
                 positions_allocated <= 1
             });
 
-            // todo: add these via tracing
-            // println!(
-            //     "Number of variables for position constraints: {}",
-            //     vars.len()
-            // );
-            // println!(
-            //     "Number of constraints for position constraints: {}",
-            //     constraints.len()
-            // );
+            tracing::trace!(
+                "Number of variables for position constraints: {}",
+                vars.len()
+            );
+            tracing::trace!(
+                "Number of constraints for position constraints: {}",
+                constraints.len()
+            );
         }
     };
 
@@ -166,15 +162,14 @@ pub fn solve_lp(
             constraints.push(constraint!(co_count.clone() <= 2 * u_r[&room]));
             constraints.push(constraint!(co_count.clone() >= u_r[&room]));
 
-            // todo: add these statements via tracing
-            // println!(
-            //     "Number of variables for room constraints: {}",
-            //     vars.len()
-            // );
-            // println!(
-            //     "Number of constraints for room constraints: {}",
-            //     constraints.len()
-            // );
+            tracing::trace!(
+                "Number of variables for room constraints: {}",
+                vars.len()
+            );
+            tracing::trace!(
+                "Number of constraints for room constraints: {}",
+                constraints.len()
+            );
         }
     };
 
@@ -258,15 +253,26 @@ pub fn solve_lp(
         difference_between_teams
     };
 
-    // println!(
-    //     "Number of variables after difference between teams: {}",
-    //     vars.len()
-    // );
-    // println!(
-    //     "Number of constraints after difference between teams: {}",
-    //     constraints.len()
-    // );
+    tracing::trace!(
+        "Number of variables after difference between teams: {}",
+        vars.len()
+    );
+    tracing::trace!(
+        "Number of constraints after difference between teams: {}",
+        constraints.len()
+    );
 
+    // Adds an optimisation term that reduces the difference between speakers
+    // on a team. We constraint `max_rating_on_team` and `min_rating_on_team`
+    // to be greater than (or less than) all speakers on the team, and then
+    // seek to minimise
+    //
+    // max - min
+    //
+    // (summing over this for all speakers).
+    //
+    // todo: this will need adapting for 3v3 spar generation (when this is
+    // eventually supported)
     let difference_between_speakers = {
         let max_rating_of_all_speakers =
             elo_scores.values().max_by(|a, b| a.total_cmp(b)).unwrap();
@@ -307,14 +313,14 @@ pub fn solve_lp(
         difference_between_speakers
     };
 
-    // println!(
-    //     "Number of variables after difference between speakers: {}",
-    //     vars.len()
-    // );
-    // println!(
-    //     "Number of constraints after difference between speakers: {}",
-    //     constraints.len()
-    // );
+    tracing::trace!(
+        "Number of variables after difference between speakers: {}",
+        vars.len()
+    );
+    tracing::trace!(
+        "Number of constraints after difference between speakers: {}",
+        constraints.len()
+    );
 
     // we want fewer rooms (where possible)
     let fewer_rooms_objective = {
@@ -327,17 +333,70 @@ pub fn solve_lp(
         room_count
     };
 
-    // todo: difference between speakers on the same team
+    let judge_penalty = {
+        let difference_between_rooms = {
+            let mut difference_between_rooms = Expression::default();
 
-    // println!("Number of variables for problem: {}", vars.len());
-    // println!("Number of constraints for problem: {}", constraints.len());
+            // For each room, calculate how many judges are allocated
+            let mut judge_counts = Vec::new();
+            for room_idx in 0..r_max {
+                let mut judge_count = Expression::default();
+                for participant_id in person_and_signup_data.keys() {
+                    judge_count += x_irj[&(participant_id, room_idx, 4)];
+                }
+                judge_counts.push(judge_count);
+            }
+
+            for i in 0..r_max {
+                for j in (i + 1)..r_max {
+                    let diff_judge_count_room_i_and_judge_count_room_j =
+                        vars.add(VariableDefinition::new());
+                    let diff =
+                        judge_counts[i].clone() - judge_counts[j].clone();
+
+                    // |a-b| = max(a-b, b-a)
+                    constraints.push(constraint!(
+                        diff_judge_count_room_i_and_judge_count_room_j
+                            >= diff.clone()
+                    ));
+                    constraints.push(constraint!(
+                        diff_judge_count_room_i_and_judge_count_room_j
+                            >= -1.0 * diff
+                    ));
+
+                    difference_between_rooms +=
+                        diff_judge_count_room_i_and_judge_count_room_j;
+                }
+            }
+
+            difference_between_rooms
+        };
+
+        let num_judges = {
+            let mut num_judges = Expression::default();
+
+            for room_idx in 0..r_max {
+                for participant_id in person_and_signup_data.keys() {
+                    num_judges += x_irj[&(participant_id, room_idx, 4)];
+                }
+            }
+
+            num_judges
+        };
+
+        difference_between_rooms + num_judges
+    };
+
+    tracing::info!("Number of variables for problem: {}", vars.len());
+    tracing::info!("Number of constraints for problem: {}", constraints.len());
 
     let mut problem = vars
         .maximise(
-            (-1 * difference_between_teams)
-            /* todo: multiplier here */
-            +  1 * (difference_between_speakers)
-            + /* todo: multiplier here */ (-1 * fewer_rooms_objective),
+            // todo: work out what the right multipliers are
+            (-1 * judge_penalty)
+                + (-1 * difference_between_teams)
+                + 1 * (difference_between_speakers)
+                + (-1 * fewer_rooms_objective),
         )
         .using(good_lp::solvers::highs::highs);
 
@@ -427,6 +486,8 @@ pub struct SolverRoom {
 }
 
 #[tracing::instrument]
+/// Constructs the rooms given the provided solution to the linear programming
+/// problem.
 pub fn rooms_of_speaker_assignments(
     params: &HashMap<i64, Assignment>,
 ) -> HashMap<usize, SolverRoom> {
@@ -510,6 +571,12 @@ mod test_allocations {
 
     use super::{rooms_of_speaker_assignments, Assignment};
 
+    /// Generates a dummy dataset, useful for testing that the program generates
+    /// the expected output.
+    ///
+    /// Note: Members are numbered from 0, with judges first, followed by
+    /// speakers, and then followeed by those who have signed up to both judge
+    /// and speak. The IDs are generated consecutively.
     fn generate_participants(
         judges: usize,
         speakers: usize,
@@ -612,6 +679,88 @@ mod test_allocations {
 
         let rooms = rooms_of_speaker_assignments(&opt);
         assert_eq!(rooms.len(), 2, "error: {rooms:#?} \n opt: {opt:?}");
+    }
+
+    #[test]
+    fn judge_balance() {
+        let participants = Arc::new(generate_participants(6, 16, 0));
+        let elo_scores = participants
+            .iter()
+            .map(|(member_id, _signup)| (*member_id, 25.0))
+            .collect::<HashMap<_, _>>();
+
+        let opt = solve_lp(participants, elo_scores);
+
+        assert_solution_valid(opt.clone());
+
+        let rooms = rooms_of_speaker_assignments(&opt);
+        assert_eq!(rooms.len(), 2, "error: {rooms:#?} \n opt: {opt:?}");
+        let mut iter = rooms.iter();
+        let room1 = iter.next().unwrap().1;
+        assert_eq!(room1.panel.len(), 3);
+        let room2 = iter.next().unwrap().1;
+        assert_eq!(room2.panel.len(), 3);
+    }
+
+    #[test]
+    fn minimal_judges() {
+        let participants = Arc::new(generate_participants(0, 12, 6));
+        let elo_scores = participants
+            .iter()
+            .map(|(member_id, _signup)| (*member_id, 25.0))
+            .collect::<HashMap<_, _>>();
+
+        let opt = solve_lp(participants, elo_scores);
+
+        assert_solution_valid(opt.clone());
+
+        let rooms = rooms_of_speaker_assignments(&opt);
+        assert_eq!(rooms.len(), 2, "error: {rooms:#?} \n opt: {opt:?}");
+        let mut iter = rooms.iter();
+        let room1 = iter.next().unwrap().1;
+        assert_eq!(room1.panel.len(), 1);
+        let room2 = iter.next().unwrap().1;
+        assert_eq!(room2.panel.len(), 1);
+    }
+
+    #[test]
+    fn dczh_regression() {
+        let participants = Arc::new(generate_participants(1, 15, 8));
+        let elo_scores = participants
+            .iter()
+            .map(|(member_id, _signup)| (*member_id, 25.0))
+            .collect::<HashMap<_, _>>();
+
+        let opt = solve_lp(participants, elo_scores);
+
+        assert_solution_valid(opt.clone());
+
+        let rooms = dbg!(rooms_of_speaker_assignments(&opt));
+        assert_eq!(rooms.len(), 3, "error: {rooms:#?} \n opt: {opt:?}");
+
+        let mut one_person_panel = 0;
+        let mut two_person_panel = 0;
+
+        let mut iter = rooms.iter();
+        let room1 = iter.next().unwrap().1;
+        match room1.panel.len() {
+            1 => one_person_panel += 1,
+            2 => two_person_panel += 1,
+            _ => unreachable!(),
+        }
+        let room2 = iter.next().unwrap().1;
+        match room2.panel.len() {
+            1 => one_person_panel += 1,
+            2 => two_person_panel += 1,
+            _ => unreachable!(),
+        }
+        let room3 = iter.next().unwrap().1;
+        match room3.panel.len() {
+            1 => one_person_panel += 1,
+            2 => two_person_panel += 1,
+            _ => unreachable!(),
+        }
+        assert!(one_person_panel == 2 && two_person_panel == 1);
     }
 
     #[test]
