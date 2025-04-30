@@ -396,7 +396,7 @@ pub fn solve_lp(
             (-1 * judge_penalty)
                 + (-1 * difference_between_teams)
                 + 1 * (difference_between_speakers)
-                + (-1 * fewer_rooms_objective),
+                + (-5 * fewer_rooms_objective),
         )
         .using(good_lp::solvers::highs::highs);
 

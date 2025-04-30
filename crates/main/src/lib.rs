@@ -41,7 +41,7 @@ use opentelemetry_semantic_conventions::{
     resource::{SERVICE_NAME, SERVICE_VERSION},
     SCHEMA_URL,
 };
-use request_ids::RequestIdFairing;
+use request_ids::{RequestIdFairing, TracingSpan};
 use rocket::{
     fairing::AdHoc,
     figment::{
@@ -98,7 +98,8 @@ pub mod util;
 extern crate rocket;
 
 #[get("/")]
-fn index(user: Option<User>) -> maud::Markup {
+fn index(user: Option<User>, span: TracingSpan) -> maud::Markup {
+    let _guard = span.0.enter();
     page_of_body(
         maud::html! {
             div {

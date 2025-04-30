@@ -1,14 +1,47 @@
-image: alpine/latest
+image: debian/stable
 packages:
-  - docker
   - ruby
   - ruby-dev
-  - util-linux-login
+  - pkg-config
+  - libssl-dev
+  - cmake
+  - clang
+  - sqlite3
+  - libsqlite3-dev
+  - curl
 sources:
   - https://git.sr.ht/~teymour/eldemite
 secrets:
   - 5c0c5bc0-2b3a-4185-923d-ac4a9c0a6a09
   - fe9881cc-e007-4f7c-93df-ee0a3ce63895
 tasks:
+  - install_rust: |
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+      source "$HOME/.cargo/env"
+  - test: |
+      cd eldemite
+      source "$HOME/.cargo/env"
+      cargo test
+  - install_docker: |
+      curl -sSL https://get.docker.com/ | sh
   - deploy: |
-      sudo bash /home/build/eldemite/deploy-srht.sh
+      cd /home/build/eldemite
+      sudo gem install kamal
+      export GEM_HOME="$(ruby -e 'puts Gem.user_dir')"
+      export PATH="$PATH:$GEM_HOME/bin"
+
+      cat > ~/docker-wrapper << 'EOF'
+      #!/bin/bash
+      sudo docker "$@"
+      EOF
+      chmod +x ~/docker-wrapper
+
+      mkdir -p ~/bin
+      ln -sf ~/docker-wrapper ~/bin/docker
+      export PATH="$HOME/bin:$PATH"
+
+      set +x
+      . /home/build/.set_secret_env_vars
+      set -x
+
+      kamal deploy

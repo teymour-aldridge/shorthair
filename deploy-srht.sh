@@ -1,5 +1,4 @@
-rc-update add docker default
-service docker start
+sudo systemctl start docker
 cd /home/build/eldemite
 mkdir /root/.ssh && cp -r /home/build/.ssh/* /root/.ssh
 gem install kamal
