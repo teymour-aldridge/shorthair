@@ -17,9 +17,14 @@ use rocket::{
     response::{Flash, Redirect},
 };
 use serde::Serialize;
+use tracing::Instrument;
 
 use crate::{
-    model::sync::id::gen_uuid, page_of_body, request_ids::TracingSpan,
+    model::sync::id::gen_uuid,
+    page_of_body,
+    permissions::{has_permission, Permission},
+    request_ids::TracingSpan,
+    resources::GroupRef,
 };
 
 fn create_group_form(error: Option<String>) -> Markup {
@@ -127,8 +132,11 @@ pub async fn view_groups(
     group_id: String,
     db: DbConn,
     user: Option<User>,
+    span: TracingSpan,
 ) -> Option<Markup> {
-    db.run(|conn| {
+    let span1 = span.0.clone();
+    db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
             let query_result = {
                 let group = groups::table
@@ -203,42 +211,49 @@ pub async fn view_groups(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
-#[get("/groups/<inst_id>/spar_series/new")]
-pub async fn new_internals_page(
-    inst_id: String,
+#[get("/groups/<group_id>/spar_series/new")]
+pub async fn create_new_spar_series_page(
+    group_id: &str,
     user: User,
     db: DbConn,
+    span: TracingSpan,
 ) -> Option<Result<Markup, Flash<Redirect>>> {
-    let res = db
-        .run(move |conn| {
-            let inst = groups::table
-                .filter(groups::public_id.eq(inst_id.clone()))
+    let group_id = group_id.to_string();
+    let span1 = span.0.clone();
+    db.run(move |conn| {
+        let _guard = span1.enter();
+        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+            let group = match groups::table
+                .filter(groups::public_id.eq(&group_id))
                 .get_result::<Group>(conn)
                 .optional()
-                .unwrap();
-            inst.map(move |inst| {
-                let auth = select(exists(
-                    groups::table
-                        .filter(groups::public_id.eq(inst_id))
-                        .inner_join(group_members::table)
-                        .filter(group_members::user_id.eq(user.id))
-                        .filter(GroupMember::has_signing_power())
-                        .or_filter(GroupMember::is_admin()),
-                ))
-                .get_result::<bool>(conn)
-                .unwrap();
+                .unwrap()
+            {
+                Some(inst) => inst,
+                None => {
+                    return Ok(None)
+                }
+            };
 
-                (inst, auth)
-            })
-        })
-        .await;
+            let has_permission = has_permission(
+                Some(&user),
+                &Permission::ModifyResourceInGroup(GroupRef(group.id)),
+                conn,
+            );
 
-    res.map(|(_group, t)| {
-        if t {
-            Ok(page_of_body(html! {
+            if !has_permission {
+                return Ok(Some(Err(Flash::error(
+                    Redirect::to("/"),
+                    "Error: you do not have permission to do that!",
+                ))))
+            }
+
+
+            Ok(Some(Ok(page_of_body(html! {
                 h1 { "Create spar series" }
                 div class="alert alert-info" role="alert" {
                     "Note: a spar series connects a number of spars together.
@@ -262,14 +277,11 @@ pub async fn new_internals_page(
                     }
                     button type="submit" class="btn btn-primary" { "Submit" }
                 }
-            }, Some(user)))
-        } else {
-            Err(Flash::error(
-                Redirect::to("/"),
-                "Error: you do not have permission to do that!",
-            ))
-        }
+            }, Some(user)))))
+        }).unwrap()
     })
+    .instrument(span.0)
+    .await
 }
 
 #[derive(FromForm, Serialize, Debug)]
@@ -279,7 +291,7 @@ pub struct CreateSparSeriesForm {
 }
 
 #[post("/groups/<group_id>/spar_series/new", data = "<form>")]
-pub async fn do_create_spar_series(
+pub async fn do_create_new_spar_series(
     group_id: String,
     user: User,
     db: DbConn,
@@ -296,18 +308,12 @@ pub async fn do_create_spar_series(
                 None => return Ok(None),
             };
 
-            let auth = select(exists(
-                groups::table
-                    .filter(groups::public_id.eq(group_id))
-                    .inner_join(group_members::table)
-                    .filter(group_members::user_id.eq(user.id))
-                    .filter(GroupMember::has_signing_power())
-                    .or_filter(GroupMember::is_admin()),
-            ))
-            .get_result::<bool>(conn)
-            .unwrap();
-
-            if !auth {
+            let has_permission = has_permission(
+                Some(&user),
+                &Permission::ModifyResourceInGroup(GroupRef(group.id)),
+                conn,
+            );
+            if !has_permission {
                 return Ok(Some(Ok(Flash::error(
                     Redirect::to("/"),
                     "Error: you do not have permission to do that!",
@@ -329,7 +335,8 @@ pub async fn do_create_spar_series(
                     spar_series::auto_approve_join_requests.eq(false),
                 ))
                 .returning(spar_series::public_id)
-                .get_result::<String>(conn)?;
+                .get_result::<String>(conn)
+                .unwrap();
 
             Ok(Some(Ok(Flash::success(
                 Redirect::to(format!("/spar_series/{}", uuid)),

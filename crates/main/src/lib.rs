@@ -11,12 +11,12 @@ use admin::{
     setup::{do_setup, setup_page},
 };
 use auth::{
+    change_password::{do_set_password, profile_page},
     login::{
         check_email_page, confirm_login_with_code, do_login,
         do_login_with_code, do_password_login, login_page, login_with_password,
     },
     logout,
-    change_password::{do_set_password, profile_page},
     register::{do_register, register_page},
 };
 use db::{user::User, DbConn};
@@ -24,8 +24,8 @@ use diesel_migrations::{
     embed_migrations, EmbeddedMigrations, MigrationHarness,
 };
 use groups::{
-    create_group_page, do_create_group, do_create_spar_series,
-    new_internals_page, view_groups,
+    create_group_page, create_new_spar_series_page, do_create_group,
+    do_create_new_spar_series, view_groups,
 };
 use html::page_of_body;
 use maud::{html, Markup};
@@ -328,8 +328,8 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 view_groups,
                 create_group_page,
                 do_create_group,
-                new_internals_page,
-                do_create_spar_series,
+                create_new_spar_series_page,
+                do_create_new_spar_series,
                 make_session_page,
                 do_make_session,
                 single_spar_overview_for_admin_page,
