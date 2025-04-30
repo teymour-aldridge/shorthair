@@ -386,19 +386,15 @@ pub async fn set_is_open(
                     .select(groups::all_columns)
                     .first::<Group>(conn)?;
 
-                let has_permission = select(exists(
-                    group_members::table
-                        .filter(group_members::group_id.eq(group.id))
-                        .filter(group_members::user_id.eq(user.id))
-                        .filter(
-                            group_members::is_admin
-                                .or(group_members::has_signing_power),
-                        ),
-                ))
-                .get_result::<bool>(conn)?;
+                let has_permission = has_permission(
+                    Some(&user),
+                    &Permission::ModifyResourceInGroup(
+                        crate::resources::GroupRef(group.id),
+                    ),
+                    conn,
+                );
 
                 if !has_permission {
-                    // todo: return permission error
                     return Ok(None);
                 }
 

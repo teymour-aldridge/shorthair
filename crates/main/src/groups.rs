@@ -18,7 +18,9 @@ use rocket::{
 };
 use serde::Serialize;
 
-use crate::{model::sync::id::gen_uuid, page_of_body};
+use crate::{
+    model::sync::id::gen_uuid, page_of_body, request_ids::TracingSpan,
+};
 
 fn create_group_form(error: Option<String>) -> Markup {
     html! {
@@ -59,8 +61,11 @@ pub async fn do_create_group(
     user: User,
     group: Form<CreateGroupForm>,
     db: DbConn,
+    span: TracingSpan,
 ) -> Either<Markup, Redirect> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
             let name_taken = select(exists(groups::table.filter(groups::name.eq(&group.name))))
                 .get_result::<bool>(conn)

@@ -4,8 +4,8 @@ use chrono::{NaiveDateTime, Utc};
 use db::{
     group::Group,
     schema::{
-        group_members, groups, spar_series, spar_series_join_requests,
-        spar_series_members, spars,
+        groups, spar_series, spar_series_join_requests, spar_series_members,
+        spars,
     },
     spar::{Spar, SparSeries, SparSeriesMember},
     user::User,
@@ -52,21 +52,14 @@ pub async fn internal_page(
                 .unwrap();
 
             if let Some((spar_series, group)) = t {
-                let user_is_admin = {
-                    let select = select(exists(
-                        group_members::table
-                            .filter(group_members::group_id.eq(group.id))
-                            .filter(group_members::user_id.eq(user.id))
-                            .filter(
-                                group_members::has_signing_power
-                                    .eq(true)
-                                    .or(group_members::is_admin.eq(true)),
-                            ),
-                    ));
-                    select.get_result::<bool>(conn)?
-                };
-
-                if !user_is_admin {
+                let has_permission = has_permission(
+                    Some(&user),
+                    &Permission::ModifyResourceInGroup(
+                        crate::resources::GroupRef(group.id),
+                    ),
+                    conn,
+                );
+                if !has_permission {
                     return Ok(Some(Err(Unauthorized(()))));
                 }
 
@@ -150,20 +143,14 @@ pub async fn make_session_page(
                 .unwrap();
 
             if let Some((_, group)) = t {
-                let user_is_admin = select(exists(
-                    group_members::table
-                        .filter(group_members::group_id.eq(group.id))
-                        .filter(group_members::user_id.eq(user.id))
-                        .filter(
-                            group_members::has_signing_power
-                                .eq(true)
-                                .or(group_members::is_admin.eq(true)),
-                        ),
-                ))
-                .get_result::<bool>(conn)
-                .unwrap();
-
-                if !user_is_admin {
+                let has_permission = has_permission(
+                    Some(&user),
+                    &Permission::ModifyResourceInGroup(
+                        crate::resources::GroupRef(group.id),
+                    ),
+                    conn,
+                );
+                if !has_permission {
                     return Ok(Some(Err(Unauthorized(()))));
                 }
 
@@ -208,20 +195,14 @@ pub async fn do_make_session(
             if let Some((internal, institution)) = t {
                 let (spar_series, group): (SparSeries, Group) =
                     (internal, institution);
-                let user_is_admin = select(exists(
-                    group_members::table
-                        .filter(group_members::group_id.eq(group.id))
-                        .filter(group_members::user_id.eq(user.id))
-                        .filter(
-                            group_members::has_signing_power
-                                .eq(true)
-                                .or(group_members::is_admin.eq(true)),
-                        ),
-                ))
-                .get_result::<bool>(conn)
-                .unwrap();
-
-                if !user_is_admin {
+                let has_permission = has_permission(
+                    Some(&user),
+                    &Permission::ModifyResourceInGroup(
+                        crate::resources::GroupRef(group.id),
+                    ),
+                    conn,
+                );
+                if !has_permission {
                     return Ok(Some(Err(Unauthorized(()))));
                 }
 
@@ -331,20 +312,14 @@ pub async fn add_member_page(
             if let Some((internal, institution)) = t {
                 let (_spar_series, group): (SparSeries, Group) =
                     (internal, institution);
-                let user_is_admin = select(exists(
-                    group_members::table
-                        .filter(group_members::group_id.eq(group.id))
-                        .filter(group_members::user_id.eq(user.id))
-                        .filter(
-                            group_members::has_signing_power
-                                .eq(true)
-                                .or(group_members::is_admin.eq(true)),
-                        ),
-                ))
-                .get_result::<bool>(conn)
-                .unwrap();
-
-                if !user_is_admin {
+                let has_permission = has_permission(
+                    Some(&user),
+                    &Permission::ModifyResourceInGroup(
+                        crate::resources::GroupRef(group.id),
+                    ),
+                    conn,
+                );
+                if !has_permission {
                     return Ok(error_403(
                         Some("Error: you are not authorized to administer this group.".to_string()),
                         Some(user)

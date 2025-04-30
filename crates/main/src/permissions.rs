@@ -20,6 +20,7 @@ pub enum Permission {
 /// object.
 ///
 /// TODO: could add reasons for permissions being denied
+#[tracing::instrument(skip(conn))]
 pub fn has_permission(
     user: Option<&User>,
     permission: &Permission,
@@ -46,6 +47,7 @@ pub fn has_permission(
     }
 }
 
+#[tracing::instrument(skip(conn))]
 fn check_if_registrations_are_open(
     conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
 ) -> bool {
@@ -64,6 +66,7 @@ fn check_if_registrations_are_open(
     !disable_signups
 }
 
+#[tracing::instrument(skip(conn))]
 fn check_delete_resource_in_group(
     user: Option<&User>,
     conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
@@ -88,6 +91,7 @@ fn check_delete_resource_in_group(
     group_membership.has_signing_power
 }
 
+#[tracing::instrument(skip(conn))]
 fn check_modify_resource_in_group(
     user: Option<&User>,
     conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
@@ -108,6 +112,11 @@ fn check_modify_resource_in_group(
         Some(t) => t,
         None => return false,
     };
+
+    assert!(
+        group_membership.has_signing_power as u8
+            <= group_membership.is_admin as u8
+    );
 
     group_membership.is_admin || group_membership.has_signing_power
 }

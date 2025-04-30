@@ -16,7 +16,7 @@ use auth::{
         do_login_with_code, do_password_login, login_page, login_with_password,
     },
     logout,
-    profile::{do_set_password, profile_page},
+    change_password::{do_set_password, profile_page},
     register::{do_register, register_page},
 };
 use db::{user::User, DbConn};

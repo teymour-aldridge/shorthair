@@ -68,7 +68,9 @@ pub async fn do_set_password(
     form: Form<SetPasswordForm>,
     span: TracingSpan,
 ) -> Result<Markup, Redirect> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             if form.password != form.password2 {
                 return Ok(Ok(auth_profile_page(

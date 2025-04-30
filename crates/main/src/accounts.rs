@@ -13,7 +13,9 @@ use crate::{html::page_of_body, request_ids::TracingSpan};
 
 #[get("/user")]
 pub async fn account_page(user: User, db: DbConn, span: TracingSpan) -> Markup {
-    db.run(|conn| {
+    let span1 = span.0.clone();
+    db.run(move |conn| {
+        let _guard = span1.clone();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let groups_user_belongs_to = groups::table
                 .inner_join(group_members::table)
