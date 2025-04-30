@@ -493,8 +493,11 @@ pub async fn request2join_spar_series_page(
     spar_series_id: String,
     db: DbConn,
     user: Option<User>,
+    span: TracingSpan,
 ) -> Option<Markup> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let series = match spar_series::table
                 .filter(spar_series::public_id.eq(&spar_series_id))
@@ -522,6 +525,7 @@ pub async fn request2join_spar_series_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -537,8 +541,11 @@ pub async fn do_request2join_spar_series(
     db: DbConn,
     user: Option<User>,
     form: Form<Request2JoinSparSeriesForm>,
+    span: TracingSpan,
 ) -> Option<Markup> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             if !is_valid_email(&form.email) {
                 let page = render_request2join_form(Some(
@@ -631,6 +638,7 @@ pub async fn do_request2join_spar_series(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -639,8 +647,11 @@ pub async fn join_requests_page(
     db: DbConn,
     spar_series_id: String,
     user: User,
+    span: TracingSpan,
 ) -> Option<Markup> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let series = match spar_series::table
                 .filter(spar_series::public_id.eq(&spar_series_id))
@@ -713,6 +724,7 @@ pub async fn join_requests_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -727,8 +739,11 @@ pub async fn approve_join_request(
     spar_series_id: String,
     user: User,
     form: Form<ApproveJoinRequestForm>,
+    span: TracingSpan,
 ) -> Option<Result<Redirect, Markup>> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let series = match spar_series::table
                 .filter(spar_series::public_id.eq(&spar_series_id))
@@ -804,6 +819,7 @@ pub async fn approve_join_request(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -812,9 +828,12 @@ pub async fn member_overview_page(
     db: DbConn,
     spar_series_id: &str,
     user: User,
+    span: TracingSpan,
 ) -> Option<Markup> {
+    let span1 = span.0.clone();
     let spar_series_id = spar_series_id.to_string();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let series = match spar_series::table
                 .filter(spar_series::public_id.eq(&spar_series_id))
@@ -895,6 +914,7 @@ pub async fn member_overview_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -904,11 +924,15 @@ pub async fn spar_series_member_overview(
     spar_member_id: &str,
     db: DbConn,
     user: User,
+    span: TracingSpan,
 ) -> Option<Markup> {
     let spar_series_id = spar_series_id.to_string();
     let spar_member_id = spar_member_id.to_string();
 
+    let span1 = span.0.clone();
+
     db.run(move |conn| {
+        let _guard = span1.enter ();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let series = match spar_series::table
                 .filter(spar_series::public_id.eq(&spar_series_id))
@@ -962,6 +986,7 @@ pub async fn spar_series_member_overview(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -971,11 +996,15 @@ pub async fn set_member_email_page(
     spar_member_id: &str,
     db: DbConn,
     user: User,
+    span: TracingSpan,
 ) -> Option<Markup> {
     let spar_series_id = spar_series_id.to_string();
     let spar_member_id = spar_member_id.to_string();
 
+    let span1 = span.0.clone();
+
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let series = match spar_series::table
                 .filter(spar_series::public_id.eq(&spar_series_id))
@@ -1032,6 +1061,7 @@ pub async fn set_member_email_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -1050,11 +1080,15 @@ pub async fn set_member_email(
     db: DbConn,
     user: User,
     form: Form<SetEmailForm>,
+    span: TracingSpan,
 ) -> Option<Result<Redirect, Markup>> {
     let spar_series_id = spar_series_id.to_string();
     let spar_member_id = spar_member_id.to_string();
 
+    let span1 = span.0.clone();
+
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let series = match spar_series::table
                 .filter(spar_series::public_id.eq(&spar_series_id))
@@ -1108,5 +1142,6 @@ pub async fn set_member_email(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }

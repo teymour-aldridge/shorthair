@@ -75,6 +75,7 @@ pub enum BpTeam {
 impl BallotRepr {
     /// Retrieves a useful representation of a ballot given the id of a row in
     /// the adjudicator_ballots table.
+    #[tracing::instrument(name = "BallotRepr::of_id", skip(conn))]
     pub fn of_id(
         id: i64,
         conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
@@ -131,6 +132,7 @@ impl BallotRepr {
     ///
     /// Panics if the debate is not currently stored in the database in BP
     /// format.
+    #[tracing::instrument(name = "BallotRepr::bp_ranking")]
     pub fn bp_ranking(&self) -> Vec<BpTeam> {
         // todo: maybe return an option instead of asserting here?
         assert_eq!(self.scoresheet.teams.len(), 4);

@@ -27,8 +27,11 @@ pub async fn spar_signup_search_page(
     spar_id: String,
     db: DbConn,
     user: Option<User>,
+    span: TracingSpan,
 ) -> Option<Markup> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
@@ -49,6 +52,7 @@ pub async fn spar_signup_search_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 

@@ -38,6 +38,7 @@ pub struct DbConn(DbWrapper);
 pub struct DbWrapper(SqliteConnection);
 
 impl SimpleConnection for DbWrapper {
+    #[tracing::instrument(skip(self, query))]
     fn batch_execute(&mut self, query: &str) -> QueryResult<()> {
         self.0.batch_execute(query)?;
 
@@ -55,6 +56,7 @@ impl Connection for DbWrapper {
         Ok(DbWrapper(SqliteConnection::establish(database_url)?))
     }
 
+    #[tracing::instrument(skip(self, f))]
     fn transaction<T, E, F>(&mut self, f: F) -> Result<T, E>
     where
         F: FnOnce(&mut Self) -> Result<T, E>,
@@ -99,6 +101,7 @@ impl LoadConnection<DefaultLoadingMode> for DbWrapper {
     where
         Self: 'conn;
 
+    #[tracing::instrument(skip(self, source))]
     fn load<'conn, 'query, T>(
         &'conn mut self,
         source: T,

@@ -15,6 +15,7 @@ pub struct MagicLink {
 }
 
 impl MagicLink {
+    #[tracing::instrument(name = "MagicLink::valid_with_code")]
     pub fn valid_with_code<'a>(
         code: &'a str,
     ) -> Box<

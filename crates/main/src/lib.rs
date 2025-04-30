@@ -98,7 +98,6 @@ pub mod util;
 extern crate rocket;
 
 #[get("/")]
-#[tracing::instrument(skip(user))]
 fn index(user: Option<User>) -> maud::Markup {
     page_of_body(
         maud::html! {

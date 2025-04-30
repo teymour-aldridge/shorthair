@@ -22,6 +22,7 @@ pub fn page_of_body_and_flash_msg(
 }
 
 /// Renders an HTML page with the provided body markup.
+#[tracing::instrument]
 pub fn page_of_body(body: Markup, user: Option<User>) -> Markup {
     html! {
         (DOCTYPE)

@@ -75,6 +75,7 @@ impl Spar {
     ///
     /// Currently we resolve conflicting ballots by assuming that the most
     /// recently submitted ballot is correct.
+    #[tracing::instrument(skip(conn))]
     pub fn canonical_ballots(
         &self,
         conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
@@ -121,6 +122,7 @@ impl Spar {
     }
 
     /// Loads all the rooms that are part of this spar.
+    #[tracing::instrument(skip(conn))]
     pub fn rooms(
         &self,
         conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
@@ -160,6 +162,10 @@ pub struct SparSignupSerializer {
 }
 
 impl SparSignupSerializer {
+    #[tracing::instrument(
+        name = "SparSignupSerializer::from_db_ty",
+        skip(conn)
+    )]
     pub fn from_db_ty(
         t: SparSignup,
         conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),

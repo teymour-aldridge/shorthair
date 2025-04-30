@@ -1,8 +1,8 @@
 use arbitrary::Arbitrary;
 use db::{
     ballot::{
-        AdjudicatorBallot, AdjudicatorBallotLink, BallotRepr, Scoresheet,
-        SpeakerScoresheet, TeamScoresheet,
+        AdjudicatorBallot, AdjudicatorBallotLink, BallotRepr, BpTeam,
+        Scoresheet, SpeakerScoresheet, TeamScoresheet,
     },
     room::SparRoomRepr,
     schema::{
@@ -18,19 +18,25 @@ use fuzzcheck::DefaultMutator;
 use maud::Markup;
 use rocket::{form::Form, response::Redirect};
 use serde::{Deserialize, Serialize};
+use tracing::Instrument;
 
 use crate::{
     html::{error_404, page_of_body},
     model::sync::id::gen_uuid,
+    request_ids::TracingSpan,
 };
 
 #[get("/ballots/submit/<key>")]
 pub async fn submit_ballot_page(
-    key: String,
+    key: &str,
     db: DbConn,
     user: Option<User>,
+    span: TracingSpan,
 ) -> Markup {
+    let key = key.to_string();
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let key = match spar_adjudicator_ballot_links::table
                 .filter(spar_adjudicator_ballot_links::link.eq(&key))
@@ -74,10 +80,27 @@ pub async fn submit_ballot_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
 pub fn render_ballot(room: &SparRoomRepr, prev: &BallotRepr) -> Markup {
+    let ranking = prev.bp_ranking();
+    let get_style = |team: BpTeam| -> &str {
+        match ranking
+            .iter()
+            .enumerate()
+            .find(|(_, needle)| team == **needle)
+            .map(|(t, _)| t)
+            .unwrap()
+        {
+            0 => "list-group-item list-group-item-success",
+            1 => "list-group-item list-group-item-info",
+            2 => "list-group-item list-group-item-warning",
+            3 => "list-group-item list-group-item-danger",
+            _ => unreachable!(),
+        }
+    };
     maud::html! {
         div class="row pl-3 pt-3 p-0" {
             div class="col-6 list-group mb-3" {
@@ -95,7 +118,7 @@ pub fn render_ballot(room: &SparRoomRepr, prev: &BallotRepr) -> Markup {
                         (prev.scoresheet.teams[0].speakers[1].score)
                     }
                 }
-                li class="list-group-item list-group-item-danger" {
+                li class=((get_style)(BpTeam::Og)) {
                     em {"Total for Opening Government"}
                     span class="float-end badge text-bg-secondary" {
                         (prev.scoresheet.teams[0].speakers[0].score + prev.scoresheet.teams[0].speakers[1].score)
@@ -118,7 +141,7 @@ pub fn render_ballot(room: &SparRoomRepr, prev: &BallotRepr) -> Markup {
                         (prev.scoresheet.teams[1].speakers[1].score)
                     }
                 }
-                li class="list-group-item list-group-item-info" {
+                li class=((get_style(BpTeam::Oo))) {
                     em {"Total for Opening Opposition"}
                     span class="float-end badge text-bg-secondary" {
                         (prev.scoresheet.teams[1].speakers[0].score + prev.scoresheet.teams[1].speakers[1].score)
@@ -141,7 +164,7 @@ pub fn render_ballot(room: &SparRoomRepr, prev: &BallotRepr) -> Markup {
                         (prev.scoresheet.teams[2].speakers[1].score)
                     }
                 }
-                li class="list-group-item list-group-item-warning" {
+                li class=((get_style)(BpTeam::Cg)) {
                     em {"Total for Closing Government"}
                     span class="float-end badge text-bg-secondary" {
                         (prev.scoresheet.teams[2].speakers[0].score + prev.scoresheet.teams[2].speakers[1].score)
@@ -164,7 +187,7 @@ pub fn render_ballot(room: &SparRoomRepr, prev: &BallotRepr) -> Markup {
                         (prev.scoresheet.teams[3].speakers[1].score)
                     }
                 }
-                li class="list-group-item list-group-item-success" {
+                li class=((get_style)(BpTeam::Co)) {
                     em {"Total for Closing Opposition"}
                     span class="float-end badge text-bg-secondary" {
                         (prev.scoresheet.teams[3].speakers[0].score + prev.scoresheet.teams[3].speakers[1].score)
@@ -313,8 +336,11 @@ pub async fn do_submit_ballot(
     db: DbConn,
     user: Option<User>,
     ballot: Form<BpBallotForm>,
+    span: TracingSpan,
 ) -> Result<Redirect, Markup> {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let key = match spar_adjudicator_ballot_links::table
                 .filter(spar_adjudicator_ballot_links::link.eq(&key))
@@ -686,6 +712,7 @@ pub async fn do_submit_ballot(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -694,9 +721,13 @@ pub async fn do_submit_ballot(
 pub async fn view_ballot(
     user: Option<User>,
     db: DbConn,
-    ballot_id: String,
+    ballot_id: &str,
+    span: TracingSpan,
 ) -> Option<Markup> {
+    let ballot_id = ballot_id.to_string();
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let ballot = adjudicator_ballots::table
                 .filter(adjudicator_ballots::public_id.eq(&ballot_id))
@@ -725,5 +756,6 @@ pub async fn view_ballot(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }

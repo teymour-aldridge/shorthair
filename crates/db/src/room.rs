@@ -42,6 +42,7 @@ pub struct SparRoom {
 }
 
 impl SparRoom {
+    #[tracing::instrument(name = "SparRoom::repr", skip(conn))]
     pub fn repr(
         &self,
         conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
@@ -49,6 +50,7 @@ impl SparRoom {
         SparRoomRepr::of_id(self.id, conn)
     }
 
+    #[tracing::instrument(name = "SparRoom::canonical_ballot", skip(conn))]
     pub fn canonical_ballot(
         &self,
         conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
@@ -84,6 +86,7 @@ pub struct SparRoomRepr {
 }
 
 impl SparRoomRepr {
+    #[tracing::instrument(name = "SparRoomRepr::of_id", skip(conn))]
     pub fn of_id(
         room_id: i64,
         conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
