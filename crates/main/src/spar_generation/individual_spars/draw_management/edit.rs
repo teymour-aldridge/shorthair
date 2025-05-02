@@ -1,16 +1,17 @@
 use db::{
     room::SparRoomRepr,
-    schema::{group_members, groups, spar_rooms, spar_series, spars},
+    schema::{spar_rooms, spar_series, spars},
     spar::Spar,
     user::User,
     DbConn,
 };
-use diesel::dsl::{exists, select};
 use diesel::prelude::*;
 use maud::{html, Markup};
 
 use crate::{
     html::{error_403, error_404, page_of_body},
+    permissions::{has_permission, Permission},
+    resources::GroupRef,
     spar_generation::individual_spars::draw_management::util::render_draw,
 };
 
@@ -39,19 +40,17 @@ pub async fn show_draw_to_admin_page(
                 }
             };
 
-            let user_is_admin = select(exists(
-                spar_series::table
-                    .filter(spar_series::id.eq(spar.id))
-                    .inner_join(groups::table.inner_join(group_members::table))
-                    .filter(group_members::user_id.eq(user.id))
-                    .filter(
-                        group_members::is_admin
-                            .eq(true)
-                            .or(group_members::has_signing_power.eq(true)),
-                    ),
-            ))
-            .get_result::<bool>(conn)
-            .unwrap();
+            let user_is_admin = has_permission(
+                Some(&user),
+                &Permission::ModifyResourceInGroup(GroupRef({
+                    spar_series::table
+                        .filter(spar_series::id.eq(spar.spar_series_id))
+                        .select(spar_series::group_id)
+                        .first::<i64>(conn)
+                        .unwrap()
+                })),
+                conn,
+            );
 
             let may_view = user_is_admin || spar.release_draw;
 

@@ -3,22 +3,23 @@ use std::{collections::HashMap, sync::Arc};
 use chrono::{TimeDelta, Utc};
 use db::{
     schema::{
-        group_members, groups, spar_adjudicator_ballot_links,
-        spar_adjudicators, spar_rooms, spar_series, spar_series_members,
-        spar_signups, spar_speakers, spar_teams, spars,
+        spar_adjudicator_ballot_links, spar_adjudicators, spar_rooms,
+        spar_series, spar_series_members, spar_signups, spar_speakers,
+        spar_teams, spars,
     },
     spar::{Spar, SparSeriesMember, SparSignup},
     user::User,
     DbConn,
 };
-use diesel::dsl::{exists, insert_into, select};
-use diesel::prelude::*;
+use diesel::{dsl::insert_into, prelude::*};
 use rocket::response::{status::Unauthorized, Flash, Redirect};
 use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::{
+    permissions::{has_permission, Permission},
     request_ids::TracingSpan,
+    resources::GroupRef,
     spar_generation::allocation_problem::solve_allocation::{
         rooms_of_speaker_assignments, solve_lp, Team,
     },
@@ -58,20 +59,17 @@ pub async fn generate_draw(
 
             tracing::trace!("Spar exists");
 
-            let user_id = user.id;
-            let user_has_permission = select(exists(
-                spar_series::table
-                    .filter(spar_series::id.eq(spar.spar_series_id))
-                    .inner_join(groups::table.inner_join(group_members::table))
-                    .filter(group_members::user_id.eq(user_id))
-                    .filter(
-                        group_members::is_admin
-                            .eq(true)
-                            .or(group_members::has_signing_power.eq(true)),
-                    ),
-            ))
-            .get_result::<bool>(conn)
-            .unwrap();
+            let user_has_permission = has_permission(
+                Some(&user),
+                &Permission::ModifyResourceInGroup(GroupRef({
+                    spar_series::table
+                        .filter(spar_series::id.eq(spar.spar_series_id))
+                        .select(spar_series::group_id)
+                        .first::<i64>(conn)
+                        .unwrap()
+                })),
+                conn,
+            );
 
             if !user_has_permission {
                 return Ok::<_, diesel::result::Error>(Some(Err(Unauthorized(()))));

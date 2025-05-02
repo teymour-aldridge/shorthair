@@ -5,23 +5,24 @@ use std::sync::Arc;
 use db::{
     ballot::AdjudicatorBallotLink,
     schema::{
-        group_members, groups, spar_adjudicator_ballot_links, spar_rooms,
-        spar_series, spar_series_members, spars,
+        spar_adjudicator_ballot_links, spar_rooms, spar_series,
+        spar_series_members, spars,
     },
     spar::{Spar, SparSeriesMember},
     user::User,
     DbConn,
 };
-use diesel::{
-    dsl::{exists, select},
-    prelude::*,
-};
+use diesel::prelude::*;
 use either::Either;
 use email::send_mail;
 use maud::Markup;
 use rocket::response::Redirect;
 
-use crate::html::{error_403, error_404};
+use crate::{
+    html::{error_403, error_404},
+    permissions::{has_permission, Permission},
+    resources::GroupRef,
+};
 
 #[post("/spars/<spar_id>/releasedraw")]
 pub async fn do_release_draw(
@@ -47,19 +48,17 @@ pub async fn do_release_draw(
                 }
             };
 
-            let user_has_permission = select(exists(
-                spar_series::table
-                    .filter(spar_series::id.eq(spar.spar_series_id))
-                    .inner_join(groups::table.inner_join(group_members::table))
-                    .filter(group_members::user_id.eq(user.id))
-                    .filter(
-                        group_members::is_admin
-                            .eq(true)
-                            .or(group_members::has_signing_power.eq(true)),
-                    ),
-            ))
-            .get_result::<bool>(conn)
-            .unwrap();
+            let user_has_permission = has_permission(
+                Some(&user),
+                &Permission::ModifyResourceInGroup(GroupRef({
+                    spar_series::table
+                        .filter(spar_series::id.eq(spar.spar_series_id))
+                        .select(spar_series::group_id)
+                        .first::<i64>(conn)
+                        .unwrap()
+                })),
+                conn,
+            );
 
             if !user_has_permission {
                 return Ok(Either::Left(error_403(
