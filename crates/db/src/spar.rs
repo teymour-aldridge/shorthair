@@ -152,6 +152,8 @@ pub struct SparSignup {
 }
 
 #[derive(Debug, Serialize)]
+/// This struct loads additional data (importantly member names and emails) to
+/// facilitate rendering the list of signups.
 pub struct SparSignupSerializer {
     pub id: i64,
     pub public_id: String,

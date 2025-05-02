@@ -56,11 +56,12 @@ use spar_generation::{
         results_of_spar_page, results_of_spar_series_page,
     },
     individual_spars::{
-        admin_routes::{
-            do_release_draw, generate_draw, set_is_open,
-            show_draw_to_admin_page, single_spar_overview_for_admin_page,
-            single_spar_overview_for_participants_page,
+        admin_overview::{set_is_open, single_spar_overview_for_admin_page},
+        draw_management::{
+            edit::show_draw_to_admin_page, generate::generate_draw,
+            release::do_release_draw,
         },
+        participant_overview::single_spar_overview_for_participants_page,
         signup_routes::{
             do_register_for_spar, do_spar_signup_search,
             register_for_spar_page, spar_signup_search_page,
@@ -73,7 +74,7 @@ use spar_generation::{
 };
 use spar_generation::{
     ballots::{do_submit_ballot, submit_ballot_page, view_ballot},
-    individual_spars::admin_routes::do_mark_spar_complete,
+    individual_spars::complete_spar::do_mark_spar_complete,
     spar_series::admin_routes::{
         approve_join_request, do_request2join_spar_series, join_requests_page,
         member_overview_page, request2join_spar_series_page,
