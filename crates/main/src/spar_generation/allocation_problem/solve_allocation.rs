@@ -388,6 +388,26 @@ pub fn solve_lp(
         difference_between_rooms + num_judges
     };
 
+    let partner_preferences = {
+        let mut expr = Expression::default();
+        for (participant_id, signup) in person_and_signup_data.iter() {
+            if let Some(preferred_partner) = signup.partner_preference {
+                for r in 0..r_max {
+                    for j in 0..=3 {
+                        let z = vars.add(VariableDefinition::new());
+                        let x = x_irj[&(participant_id, r, j)];
+                        let y = x_irj[&(&preferred_partner, r, j)];
+                        constraints.push(constraint!(z <= x));
+                        constraints.push(constraint!(z <= y));
+                        constraints.push(constraint!(x >= x + y - 1));
+                        expr += z;
+                    }
+                }
+            }
+        }
+        expr
+    };
+
     tracing::info!("Number of variables for problem: {}", vars.len());
     tracing::info!("Number of constraints for problem: {}", constraints.len());
 
@@ -397,7 +417,8 @@ pub fn solve_lp(
             (-1 * judge_penalty)
                 + (-1 * difference_between_teams)
                 + 1 * (difference_between_speakers)
-                + (-5 * fewer_rooms_objective),
+                + (-5 * fewer_rooms_objective)
+                + 10 * partner_preferences,
         )
         .using(good_lp::solvers::highs::highs);
 

@@ -245,6 +245,7 @@ fn basic_test_sequence() {
                 serde_urlencoded::to_string(&SignupForSpar {
                     as_judge,
                     as_speaker,
+                    speaking_partner: None,
                 })
                 .unwrap(),
             )
@@ -406,6 +407,7 @@ fn basic_test_sequence() {
                 serde_urlencoded::to_string(&SignupForSpar {
                     as_judge,
                     as_speaker,
+                    speaking_partner: None,
                 })
                 .unwrap(),
             )

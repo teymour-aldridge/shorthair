@@ -15,6 +15,7 @@ use maud::Markup;
 use rocket::form::Form;
 use serde::Serialize;
 use tracing::Instrument;
+use uuid::Uuid;
 
 use crate::{
     html::{error_403, page_of_body},
@@ -267,6 +268,32 @@ pub async fn register_for_spar_page(
 
             tracing::trace!("Previous spar signup is {prev:?}");
 
+            let pick_speaking_partner = {
+                let speaking_partners = spar_series_members::table
+                    .filter(
+                        spar_series_members::spar_series_id
+                            .eq(spar.spar_series_id),
+                    )
+                    .load::<SparSeriesMember>(conn)
+                    .unwrap();
+
+                maud::html! {
+                    div class="mb-3" {
+                        label for="speaking_partner" class="form-label" {
+                            "Preferred speaking partner"
+                        }
+                        select class="form-select" id="speaking_partner" name="speaking_partner" {
+                            option value="" { "Select a speaking partner (optional)" }
+                            @for partner in &speaking_partners {
+                                option value=(partner.public_id) {
+                                    (partner.name)
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
             let markup = maud::html! {
                 form method="post" class="form" {
                     div class="mb-3" {
@@ -305,6 +332,7 @@ pub async fn register_for_spar_page(
                             }
                         }
                     }
+                    (pick_speaking_partner)
                     button type="submit" class="btn btn-primary" { "Submit" }
                 }
             };
@@ -320,6 +348,7 @@ pub async fn register_for_spar_page(
 pub struct SignupForSpar {
     pub as_judge: bool,
     pub as_speaker: bool,
+    pub speaking_partner: Option<Uuid>,
 }
 
 #[post("/spars/<spar_id>/reg/<member_id>", data = "<form>")]
@@ -349,27 +378,75 @@ pub async fn do_register_for_spar(
                 ));
             }
 
+            let speaking_partner_id = if let Some(partner) =
+                form.speaking_partner
+            {
+                match spar_series_members::table
+                    .filter(
+                        spar_series_members::public_id.eq(partner.to_string()),
+                    )
+                    .filter(
+                        spar_series_members::spar_series_id
+                            .eq(spar.spar_series_id),
+                    )
+                    .select(spar_series_members::id)
+                    .first::<i64>(conn)
+                    .optional()
+                    .unwrap()
+                {
+                    Some(t) => Some(t),
+                    None => {
+                        return Ok(error_403(
+                            Some(
+                                "Error: you have provided an invalid speaking
+                                        partner (this should never happen)."
+                                    .to_string(),
+                            ),
+                            None,
+                        ));
+                    }
+                }
+            } else {
+                None
+            };
+
             let member = spar_series_members::table
                 .filter(spar_series_members::public_id.eq(member_id))
                 .first::<SparSeriesMember>(conn)
                 .unwrap();
 
-            let n = diesel::insert_into(spar_signups::table)
-                .values((
-                    spar_signups::public_id.eq(gen_uuid().to_string()),
-                    spar_signups::spar_id.eq(spar.id),
-                    spar_signups::member_id.eq(member.id),
-                    spar_signups::as_judge.eq(form.as_judge),
-                    spar_signups::as_speaker.eq(form.as_speaker),
-                ))
-                .on_conflict((spar_signups::spar_id, spar_signups::member_id))
-                .do_update()
-                .set((
-                    spar_signups::as_judge.eq(form.as_judge),
-                    spar_signups::as_speaker.eq(form.as_speaker),
-                ))
-                .execute(conn)
+            let existing_signup = spar_signups::table
+                .filter(spar_signups::spar_id.eq(spar.id))
+                .filter(spar_signups::member_id.eq(member.id))
+                .first::<SparSignup>(conn)
+                .optional()
                 .unwrap();
+
+            let n = if let Some(existing) = existing_signup {
+                diesel::update(spar_signups::table)
+                    .filter(spar_signups::id.eq(existing.id))
+                    .set((
+                        spar_signups::as_judge.eq(form.as_judge),
+                        spar_signups::as_speaker.eq(form.as_speaker),
+                        spar_signups::partner_preference
+                            .eq(speaking_partner_id),
+                    ))
+                    .execute(conn)
+                    .unwrap()
+            } else {
+                diesel::insert_into(spar_signups::table)
+                    .values((
+                        spar_signups::public_id.eq(gen_uuid().to_string()),
+                        spar_signups::spar_id.eq(spar.id),
+                        spar_signups::member_id.eq(member.id),
+                        spar_signups::as_judge.eq(form.as_judge),
+                        spar_signups::as_speaker.eq(form.as_speaker),
+                        spar_signups::partner_preference
+                            .eq(speaking_partner_id),
+                    ))
+                    .execute(conn)
+                    .unwrap()
+            };
             assert_eq!(n, 1);
 
             tracing::trace!(

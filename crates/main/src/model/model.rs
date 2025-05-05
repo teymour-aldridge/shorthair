@@ -1246,6 +1246,7 @@ impl State {
                                     &SignupForSpar {
                                         as_judge: *as_judge,
                                         as_speaker: *as_speaker,
+                                        speaking_partner: None,
                                     }
                                 })
                                 .unwrap(),
