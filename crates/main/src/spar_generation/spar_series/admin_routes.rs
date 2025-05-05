@@ -98,7 +98,7 @@ pub async fn internal_page(
                                         td class="table-success" {
                                             (spar.is_complete)
                                         }
-                                    } else {
+                                    } @else {
                                         td class="table-danger" {
                                             (spar.is_complete)
                                         }
