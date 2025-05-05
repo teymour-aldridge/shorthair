@@ -1213,7 +1213,10 @@ impl State {
                     (*spar_idx).clamp(0, self.spars.len().saturating_sub(1));
                 if let Some(spar) = self.spars.get(spar_idx).clone() {
                     self.client
-                        .post(format!("/spars/{}/releasedraw", spar.public_id))
+                        .post(format!(
+                            "/spars/{}/set_released?released=true",
+                            spar.public_id
+                        ))
                         .dispatch();
                 }
             }

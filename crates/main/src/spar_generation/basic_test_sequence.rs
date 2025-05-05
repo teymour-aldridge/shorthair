@@ -297,7 +297,10 @@ fn basic_test_sequence() {
         .dispatch();
 
     rocket
-        .post(format!("/spars/{}/releasedraw", spar.public_id))
+        .post(format!(
+            "/spars/{}/set_released?released=true",
+            spar.public_id
+        ))
         .header(ContentType::Form)
         .dispatch();
 
@@ -441,12 +444,18 @@ fn basic_test_sequence() {
         .dispatch();
 
     rocket
-        .post(format!("/spars/{}/releasedraw", spar.public_id))
+        .post(format!(
+            "/spars/{}/set_released?released=true",
+            spar.public_id
+        ))
         .header(ContentType::Form)
         .dispatch();
 
     rocket
-        .post(format!("/spars/{}/releasedraw", spar.public_id))
+        .post(format!(
+            "/spars/{}/set_released?released=true",
+            spar.public_id
+        ))
         .dispatch();
 
     assert_eq!(
