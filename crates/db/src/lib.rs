@@ -2,6 +2,7 @@
 
 pub mod ballot;
 pub mod config;
+pub mod draft_draw;
 pub mod email;
 pub mod group;
 pub mod invite;

@@ -1,8 +1,8 @@
 use std::ops::Range;
 
 use fuzzcheck::{
-    Mutator,
     mutators::{integer_within_range::U64WithinRangeMutator, map::MapMutator},
+    Mutator,
 };
 
 pub type UsizeWithinRangeMutator = impl Mutator<usize>;

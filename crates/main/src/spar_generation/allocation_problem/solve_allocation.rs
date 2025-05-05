@@ -11,6 +11,7 @@ use good_lp::{
     constraint, variables, Expression, Solution, SolverModel,
     VariableDefinition,
 };
+use serde::{Deserialize, Serialize};
 
 /// Always remember: if it runs in polynomial time, it's efficient (for
 /// constructing the problem instance).
@@ -455,7 +456,18 @@ pub fn solve_lp(
     params
 }
 
-#[derive(Hash, Eq, PartialEq, PartialOrd, Ord, Clone, Copy, Debug)]
+#[derive(
+    Hash,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Clone,
+    Copy,
+    Debug,
+    Serialize,
+    Deserialize,
+)]
 pub enum Team {
     Og,
     Oo,
@@ -474,7 +486,7 @@ pub enum Assignment {
 }
 
 /// A room reconstructed from the solver output.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolverRoom {
     /// The panel.
     pub panel: HashSet<i64>,
@@ -609,6 +621,7 @@ mod test_allocations {
                     spar_id: 0,
                     as_judge: true,
                     as_speaker: false,
+                    partner_preference: None,
                 },
             );
         }
@@ -626,6 +639,7 @@ mod test_allocations {
                     spar_id: 0,
                     as_judge: false,
                     as_speaker: true,
+                    partner_preference: None,
                 },
             );
         }
@@ -643,6 +657,7 @@ mod test_allocations {
                     spar_id: 0,
                     as_judge: true,
                     as_speaker: true,
+                    partner_preference: None,
                 },
             );
         }

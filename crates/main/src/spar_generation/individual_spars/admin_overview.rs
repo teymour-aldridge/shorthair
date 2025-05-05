@@ -118,18 +118,44 @@ pub async fn single_spar_overview_for_admin_page(
 
                     let ballots = ballots_of_rooms(&draw, conn)?;
 
+                    let release_unrelease_link = if !draw.is_empty() && spar.release_draw {
+                        maud::html! {
+                            form
+                                method="post"
+                                action=(format!("/spars/{}/set_released?released=false", spar.public_id)) {
+                                button class="btn btn-secondary" type="submit" {
+                                    "Unrelease Draw"
+                                }
+                            }
+                        }
+                    } else if !draw.is_empty() && !spar.release_draw {
+                        maud::html! {
+                            form
+                                method="post"
+                                action=(format!("/spars/{}/set_released?released=true", spar.public_id)) {
+                                button class="btn btn-primary" type="submit" {
+                                    "Release Draw"
+                                }
+                            }
+                        }
+                    } else {
+                        maud::html! {}
+                    };
+
                     maud::html! {
                         @if !draw.is_empty() {
                             h3 {"Existing draw"}
                             (render_draw(draw, ballots))
                         }
 
-                        form method="post" action={"/spars/"(spar.public_id)"/makedraw"} {
-                            p class="text-danger" {
-                                b { "WARNING: generating a draw will delete any existing draw as well as all associated data (e.g. ballots from adjudicators)" }
+                        div class="d-flex gap-3 mt-3" {
+                            form method="post" action={"/spars/"(spar.public_id)"/makedraw"} {
+                                button class="btn btn-primary" type="submit" {
+                                    "Generate draw"
+                                }
                             }
-                            button class="btn btn-danger" type="submit" {
-                                "Generate draw"
+                            div {
+                                (release_unrelease_link)
                             }
                         }
                     }

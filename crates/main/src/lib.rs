@@ -58,7 +58,10 @@ use spar_generation::{
     individual_spars::{
         admin_overview::{set_is_open, single_spar_overview_for_admin_page},
         draw_management::{
-            edit::show_draw_to_admin_page, generate::generate_draw,
+            confirm_draft::{confirm_draw_page, do_confirm_draw},
+            draft_management::view_draft_draw,
+            edit::show_draw_to_admin_page,
+            generate::generate_draw,
             release::do_release_draw,
         },
         participant_overview::single_spar_overview_for_participants_page,
@@ -334,7 +337,6 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 make_session_page,
                 do_make_session,
                 single_spar_overview_for_admin_page,
-                generate_draw,
                 do_release_draw,
                 spar_signup_search_page,
                 do_spar_signup_search,
@@ -377,7 +379,11 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 profile_page,
                 do_set_password,
                 set_member_email_page,
-                set_member_email
+                set_member_email,
+                confirm_draw_page,
+                do_confirm_draw,
+                view_draft_draw,
+                generate_draw
             ],
         )
         .attach(RequestIdFairing)

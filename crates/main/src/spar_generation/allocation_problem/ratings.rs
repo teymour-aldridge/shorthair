@@ -31,6 +31,7 @@ pub fn compute_scores(
     series_id: i64,
     conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
 ) -> Result<HashMap<i64, f64>, diesel::result::Error> {
+    tracing::trace!("Computing ELO scores");
     let rooms_with_results = spar_rooms::table
         .inner_join(spars::table)
         .filter(spars::spar_series_id.eq(series_id))
@@ -151,10 +152,12 @@ pub fn compute_scores(
                 .get_mut(&room_repr.speakers[&og_speakers[0]].member_id)
                 .unwrap();
             *speaker_1 = new_og[0];
-            let speaker_2 = member_ids_to_scores_map
-                .get_mut(&room_repr.speakers[&og_speakers[1]].member_id)
-                .unwrap();
-            *speaker_2 = new_og[1];
+            if og_speakers.len() > 1 {
+                let speaker_2 = member_ids_to_scores_map
+                    .get_mut(&room_repr.speakers[&og_speakers[1]].member_id)
+                    .unwrap();
+                *speaker_2 = new_og[1];
+            }
         };
 
         let _update_oo = {
@@ -164,10 +167,12 @@ pub fn compute_scores(
                 .get_mut(&room_repr.speakers[&oo_speakers[0]].member_id)
                 .unwrap();
             *speaker_1 = new_oo[0];
-            let speaker_2 = member_ids_to_scores_map
-                .get_mut(&room_repr.speakers[&oo_speakers[1]].member_id)
-                .unwrap();
-            *speaker_2 = new_oo[1];
+            if oo_speakers.len() > 1 {
+                let speaker_2 = member_ids_to_scores_map
+                    .get_mut(&room_repr.speakers[&oo_speakers[1]].member_id)
+                    .unwrap();
+                *speaker_2 = new_oo[1];
+            }
         };
 
         let _update_cg = {
@@ -177,10 +182,12 @@ pub fn compute_scores(
                 .get_mut(&room_repr.speakers[&cg_speakers[0]].member_id)
                 .unwrap();
             *speaker_1 = new_cg[0];
-            let speaker_2 = member_ids_to_scores_map
-                .get_mut(&room_repr.speakers[&cg_speakers[1]].member_id)
-                .unwrap();
-            *speaker_2 = new_cg[1];
+            if cg_speakers.len() > 1 {
+                let speaker_2 = member_ids_to_scores_map
+                    .get_mut(&room_repr.speakers[&cg_speakers[1]].member_id)
+                    .unwrap();
+                *speaker_2 = new_cg[1];
+            }
         };
 
         let _update_co = {
@@ -190,10 +197,12 @@ pub fn compute_scores(
                 .get_mut(&room_repr.speakers[&co_speakers[0]].member_id)
                 .unwrap();
             *speaker_1 = new_co[0];
-            let speaker_2 = member_ids_to_scores_map
-                .get_mut(&room_repr.speakers[&co_speakers[1]].member_id)
-                .unwrap();
-            *speaker_2 = new_co[1];
+            if co_speakers.len() > 1 {
+                let speaker_2 = member_ids_to_scores_map
+                    .get_mut(&room_repr.speakers[&co_speakers[1]].member_id)
+                    .unwrap();
+                *speaker_2 = new_co[1];
+            }
         };
     }
 

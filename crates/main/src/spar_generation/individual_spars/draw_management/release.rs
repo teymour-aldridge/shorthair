@@ -24,11 +24,12 @@ use crate::{
     resources::GroupRef,
 };
 
-#[post("/spars/<spar_id>/releasedraw")]
+#[post("/spars/<spar_id>/set_released?<released>")]
 pub async fn do_release_draw(
     spar_id: String,
     user: User,
     db: DbConn,
+    released: bool,
 ) -> Either<Markup, Redirect> {
     let db = Arc::new(db);
     db.clone().run(move |conn| {
@@ -70,11 +71,25 @@ pub async fn do_release_draw(
                 )));
             }
 
-            let n = diesel::update(spars::table.filter(spars::id.eq(spar.id)))
-                .set((spars::release_draw.eq(true), spars::is_open.eq(false)))
-                .execute(conn)
-                .unwrap();
-            assert_eq!(n, 1);
+            match released {
+                true => {
+                    let n = diesel::update(spars::table.filter(spars::id.eq(spar.id)))
+                        .set((spars::release_draw.eq(true), spars::is_open.eq(false)))
+                        .execute(conn)
+                        .unwrap();
+                    assert_eq!(n, 1);
+                },
+                false => {
+                    let n = diesel::update(spars::table.filter(spars::id.eq(spar.id)))
+                        .set(spars::release_draw.eq(false))
+                        .execute(conn)
+                        .unwrap();
+                    assert_eq!(n, 1);
+                },
+            }
+
+
+
 
             let adjudicators = spar_adjudicator_ballot_links::table
                 .inner_join(spar_rooms::table)

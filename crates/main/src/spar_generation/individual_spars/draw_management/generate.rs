@@ -1,38 +1,31 @@
 use std::{collections::HashMap, sync::Arc};
 
-use chrono::{TimeDelta, Utc};
 use db::{
-    schema::{
-        spar_adjudicator_ballot_links, spar_adjudicators, spar_rooms,
-        spar_series, spar_series_members, spar_signups, spar_speakers,
-        spar_teams, spars,
-    },
-    spar::{Spar, SparSeriesMember, SparSignup},
+    schema::{draft_draws, spar_series, spar_signups, spars},
+    spar::{Spar, SparSignup},
     user::User,
     DbConn,
 };
 use diesel::{dsl::insert_into, prelude::*};
-use rocket::response::{status::Unauthorized, Flash, Redirect};
+use rocket::{
+    response::{status::Unauthorized, Flash, Redirect},
+    tokio,
+};
 use tracing::Instrument;
-use uuid::Uuid;
 
 use crate::{
+    model::sync::id::gen_uuid,
     permissions::{has_permission, Permission},
     request_ids::TracingSpan,
     resources::GroupRef,
-    spar_generation::allocation_problem::solve_allocation::{
-        rooms_of_speaker_assignments, solve_lp, Team,
+    spar_generation::allocation_problem::{
+        ratings::compute_scores,
+        solve_allocation::{rooms_of_speaker_assignments, solve_lp},
     },
 };
 
 #[post("/spars/<session_id>/makedraw")]
 /// Generate the draw for the internal sessions.
-///
-/// TODO: fix the concurrency behaviour of this code (e.g. might want a
-/// ticketing system, so that users can override long-running in-progress
-/// draw generations if they would like to)
-///
-/// TODO: we ideally want a way to preview the new draw before adopting it.
 pub async fn generate_draw(
     user: User,
     session_id: &str,
@@ -40,14 +33,15 @@ pub async fn generate_draw(
     span: TracingSpan,
 ) -> Option<Result<Flash<Redirect>, Unauthorized<()>>> {
     let session_id = session_id.to_string();
+    let session_id1 = session_id.clone();
     let db = Arc::new(db);
     let span1 = span.0.clone();
-    db.clone().run(move |conn| {
+
+    let ctx = db.clone().run(move |conn| {
         let _guard = span1.enter();
-        conn.transaction(move |conn| {
-            let sid = session_id.clone();
+        conn.transaction(|conn| -> Result<Option<Result<(_, _, _, _), _>>, diesel::result::Error> {
             let spar = spars::table
-                .filter(spars::public_id.eq(sid))
+                .filter(spars::public_id.eq(session_id))
                 .get_result::<Spar>(conn)
                 .optional()
                 .unwrap();
@@ -72,7 +66,7 @@ pub async fn generate_draw(
             );
 
             if !user_has_permission {
-                return Ok::<_, diesel::result::Error>(Some(Err(Unauthorized(()))));
+                return Ok::<_, diesel::result::Error>(Some(Err(Err(Unauthorized(())))));
             }
 
             tracing::trace!("User has permission");
@@ -96,119 +90,102 @@ pub async fn generate_draw(
                     .count();
 
                 if n_people_only_willing_to_speak < 4 {
-                    return Ok(Some(Ok(Flash::error(
+                    return Ok(Some(Err(Ok(Flash::error(
                         Redirect::to(format!("/spars/{}", spar.public_id)),
                         "Error: too few speakers for a British Parliamentary spar (need at least 4)!",
-                    ))));
+                    )))));
                 }
 
                 // check whether in the most extreme case (where all those who are
                 // willing to both speak and judge are assigned as judges) we have
                 // enough people to form a debate
                 if n_judges * 8 < n_people_only_willing_to_speak {
-                    return Ok(Some(Ok(Flash::error(
+                    return Ok(Some(Err(Ok(Flash::error(
                         Redirect::to(format!("/spars/{}", spar.public_id)),
                         // todo: format numbers
                         "Error: too few people willing to judge for a British
                         Parliamentary session (assuming 1 judge and 8 people)!",
-                    ))));
+                    )))));
                 }
             };
 
             tracing::trace!("Basic checks to ensure a valid draw can be
                              generated were met");
 
-            // todo: run this outside of the transaction
-            let rooms = {
-                let span = tracing::info_span!("draw generation process");
-                let _guard = span.enter();
-                let elo_scores = crate::spar_generation::allocation_problem::ratings::compute_scores(spar.spar_series_id, conn)?;
-                let params = solve_lp(signups.clone(), elo_scores);
-                rooms_of_speaker_assignments(&params)
-            };
+            let elo_scores = compute_scores(spar.spar_series_id, conn)?;
 
-            tracing::trace!("Generated room assignments");
+            let draft_id = gen_uuid().to_string();
 
-            diesel::delete(spar_rooms::table.filter(spar_rooms::spar_id.eq(spar.id))).execute(conn)?;
+            let draft_draw_id = insert_into(draft_draws::table)
+                .values((
+                    draft_draws::public_id.eq(&draft_id),
+                    draft_draws::data.eq(None::<String>),
+                    draft_draws::spar_id.eq(spar.id),
+                    draft_draws::version.eq(0),
+                    draft_draws::created_at.eq(diesel::dsl::now),
+                ))
+                .returning(draft_draws::id)
+                .get_result::<i64>(conn)
+                .unwrap();
 
-            let span = tracing::info_span!("Inserting new rooms into database");
-            let guard = span.enter();
 
-            for (_, room) in rooms {
-                let spar_room_id = diesel::insert_into(spar_rooms::table)
-                    .values((
-                        spar_rooms::public_id.eq(Uuid::now_v7().to_string()),
-                        spar_rooms::spar_id.eq(spar.id)
-                    ))
-                    .returning(spar_rooms::id)
-                    .get_result::<i64>(conn)?;
+            Ok(Some(Ok((draft_draw_id, draft_id, elo_scores, signups))))
+        }).unwrap()
+    }).await;
 
-                for adj in room.panel {
-                    let adj_signup = &signups[&adj];
-                    diesel::insert_into(spar_adjudicators::table)
-                        .values((
-                            spar_adjudicators::public_id.eq(Uuid::now_v7().to_string()),
-                            spar_adjudicators::member_id.eq(adj_signup.member_id),
-                            spar_adjudicators::room_id.eq(spar_room_id),
-                            // todo: eventually allocate chairs
-                            spar_adjudicators::status.eq("panellist"),
-                        ))
-                        .execute(conn)?;
+    let (draft_draw_id, draft_public_id, elo_scores, signups) = match ctx {
+        Some(Ok((draft_draw_id, draft_public_id, elo_scores, signups))) => {
+            (draft_draw_id, draft_public_id, elo_scores, signups)
+        }
+        Some(Err(t)) => return Some(t),
+        None => return None,
+    };
 
-                    let member = spar_series_members::table.filter(spar_series_members::id.eq(adj_signup.member_id))
-                        .first::<SparSeriesMember>(conn)?;
+    let span2 = span.0.clone();
 
-                    // todo: when deleting the records for previous rooms, we
-                    // should transfer the links over to the newly instantiated
-                    // rooms
-                    let key = Uuid::new_v4().to_string();
-                    diesel::insert_into(spar_adjudicator_ballot_links::table).values((
-                        spar_adjudicator_ballot_links::public_id.eq(Uuid::now_v7().to_string()),
-                        spar_adjudicator_ballot_links::link.eq(&key),
-                        spar_adjudicator_ballot_links::room_id.eq(spar_room_id),
-                        spar_adjudicator_ballot_links::member_id.eq(member.id),
-                        spar_adjudicator_ballot_links::created_at.eq(diesel::dsl::now),
-                        spar_adjudicator_ballot_links::expires_at.eq(Utc::now().naive_utc().checked_add_signed(TimeDelta::hours(5)).unwrap())
-                    )).execute(conn)?;
-                }
+    rocket::tokio::task::spawn_blocking(move || {
+        let _guard = span2.enter();
+        tracing::info_span!("generating draw");
+        let rooms = {
+            let params = solve_lp(signups.clone(), elo_scores);
+            rooms_of_speaker_assignments(&params)
+        };
 
-                for (team, speakers) in room.teams {
-                    let position = match team {
-                        Team::Og => 0,
-                        Team::Oo => 1,
-                        Team::Cg => 2,
-                        Team::Co => 3,
-                    };
+        let insertion_span = tracing::trace_span!("inserting generated draw");
+        tokio::task::spawn(
+            async move {
+                let tx_span = tracing::trace_span!("inserting draw tx");
+                db.run(move |conn| {
+                    let _guard = tx_span.enter();
+                    conn.transaction(
+                        |conn| -> Result<_, diesel::result::Error> {
+                            let n = diesel::update(
+                                draft_draws::table
+                                    .filter(draft_draws::id.eq(draft_draw_id)),
+                            )
+                            .set(draft_draws::data.eq(
+                                serde_json::to_string_pretty(&rooms).unwrap(),
+                            ))
+                            .execute(conn)
+                            .unwrap();
+                            assert_eq!(n, 1);
 
-                    let team_id = insert_into(spar_teams::table)
-                        .values((
-                            spar_teams::public_id.eq(Uuid::now_v7().to_string()),
-                            spar_teams::room_id.eq(spar_room_id),
-                            spar_teams::position.eq(position)
-                        ))
-                        .returning(spar_teams::id)
-                        .get_result::<i64>(conn)?;
-
-                    for speaker in speakers {
-                        let signup = &signups[&speaker];
-                        insert_into(spar_speakers::table).values((
-                            spar_speakers::public_id.eq(Uuid::now_v7().to_string()),
-                            spar_speakers::member_id.eq(signup.member_id),
-                            spar_speakers::team_id.eq(team_id),
-                        )).execute(conn)?;
-                    }
-                }
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                })
+                .await
             }
+            .instrument(insertion_span),
+        )
+    });
 
-            drop(guard);
-
-            Ok(Some(Ok(Flash::success(
-                Redirect::to(format!("/spars/{session_id}/showdraw")),
-                "Draw has been created!",
-            ))))
-        })
-    })
-    .instrument(span.0)
-    .await
-    .unwrap()
+    return Some(Ok(Flash::success(
+        Redirect::to(format!(
+            "/spars/{}/draws/{}",
+            session_id1, draft_public_id
+        )),
+        "Draw generation now in progress!",
+    )));
 }

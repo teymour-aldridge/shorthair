@@ -43,6 +43,17 @@ diesel::table! {
 }
 
 diesel::table! {
+    draft_draws (id) {
+        id -> BigInt,
+        public_id -> Text,
+        data -> Nullable<Text>,
+        spar_id -> BigInt,
+        version -> BigInt,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     emails (id) {
         id -> BigInt,
         message_id -> Text,
@@ -157,6 +168,7 @@ diesel::table! {
         spar_id -> BigInt,
         as_judge -> Bool,
         as_speaker -> Bool,
+        partner_preference -> Nullable<BigInt>,
     }
 }
 
@@ -211,6 +223,7 @@ diesel::joinable!(adjudicator_ballot_entries -> spar_speakers (speaker_id));
 diesel::joinable!(adjudicator_ballot_entries -> spar_teams (team_id));
 diesel::joinable!(adjudicator_ballots -> spar_adjudicators (adjudicator_id));
 diesel::joinable!(adjudicator_ballots -> spar_rooms (room_id));
+diesel::joinable!(draft_draws -> spars (spar_id));
 diesel::joinable!(group_members -> groups (group_id));
 diesel::joinable!(group_members -> users (user_id));
 diesel::joinable!(magic_links -> users (user_id));
@@ -222,7 +235,6 @@ diesel::joinable!(spar_rooms -> spars (spar_id));
 diesel::joinable!(spar_series -> groups (group_id));
 diesel::joinable!(spar_series_join_requests -> spar_series (spar_series_id));
 diesel::joinable!(spar_series_members -> spar_series (spar_series_id));
-diesel::joinable!(spar_signups -> spar_series_members (member_id));
 diesel::joinable!(spar_signups -> spars (spar_id));
 diesel::joinable!(spar_speakers -> spar_series_members (member_id));
 diesel::joinable!(spar_speakers -> spar_teams (team_id));
@@ -234,6 +246,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     adjudicator_ballot_entries,
     adjudicator_ballots,
     config,
+    draft_draws,
     emails,
     group_members,
     groups,

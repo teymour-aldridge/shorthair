@@ -1,5 +1,5 @@
 use chrono::{DateTime, NaiveDateTime};
-use fuzzcheck::{DefaultMutator, Mutator, mutators::map::MapMutator};
+use fuzzcheck::{mutators::map::MapMutator, DefaultMutator, Mutator};
 
 pub type NaiveDateTimeMutator = impl Mutator<NaiveDateTime>;
 

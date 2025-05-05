@@ -78,7 +78,7 @@ pub async fn results_of_spar_series_page(
                                     (spar.start_time)
                                 }
                                 td {
-                                    a href=(format!("/spar/{}/results", spar.public_id)) {
+                                    a href=(format!("/spars/{}/results", spar.public_id)) {
                                         "View results"
                                     }
                                 }
@@ -99,7 +99,7 @@ pub async fn results_of_spar_series_page(
     .await
 }
 
-#[get("/spar/<spar_id>/results")]
+#[get("/spars/<spar_id>/results")]
 /// Displays the results of a single spar. Currently we resolve conflicting
 /// ballots by assuming that the most recent one is correct.
 pub async fn results_of_spar_page(

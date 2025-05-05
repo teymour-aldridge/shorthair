@@ -789,6 +789,8 @@ impl State {
                                     spar_id: spar.id,
                                     as_judge: *as_judge,
                                     as_speaker: *as_speaker,
+                                    // todo: support this
+                                    partner_preference: None,
                                 }),
                             }
                         }

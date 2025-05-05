@@ -14,10 +14,11 @@ use crate::{
 };
 
 use db::ballot::AdjudicatorBallotLink;
+use db::draft_draw::DraftDraw;
 use db::email::EmailRow;
 use db::schema::{
-    emails, spar_adjudicator_ballot_links, spar_rooms, spar_series,
-    spar_series_join_requests, spar_series_members, spars,
+    draft_draws, emails, spar_adjudicator_ballot_links, spar_rooms,
+    spar_series, spar_series_join_requests, spar_series_members, spars,
 };
 use db::spar::{Spar, SparRoom, SparSeries, SparSeriesMember};
 use db::{group::Group, schema::groups};
@@ -216,7 +217,7 @@ fn basic_test_sequence() {
         }
     };
 
-    rocket.post("/logout");
+    rocket.get("/logout");
 
     // (4)(a) signups
 
@@ -266,6 +267,32 @@ fn basic_test_sequence() {
 
     rocket
         .post(format!("/spars/{}/makedraw", spar.public_id))
+        .dispatch();
+
+    let mut draft = draft_draws::table
+        .order_by(draft_draws::created_at.desc())
+        .first::<DraftDraw>(&mut conn)
+        .optional()
+        .unwrap();
+
+    while draft.is_none()
+        || (draft.is_some() && draft.as_ref().unwrap().data.is_none())
+    {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        draft = draft_draws::table
+            .order_by(draft_draws::created_at.desc())
+            .first::<DraftDraw>(&mut conn)
+            .optional()
+            .unwrap();
+    }
+
+    let draft = draft.unwrap();
+
+    rocket
+        .post(format!(
+            "/spars/{}/draws/{}/confirm",
+            spar.public_id, draft.public_id
+        ))
         .header(ContentType::Form)
         .dispatch();
 
@@ -384,6 +411,38 @@ fn basic_test_sequence() {
 
     rocket
         .post(format!("/spars/{}/makedraw", spar.public_id))
+        .dispatch();
+
+    let mut draft = draft_draws::table
+        .order_by(draft_draws::created_at.desc())
+        .first::<DraftDraw>(&mut conn)
+        .optional()
+        .unwrap();
+
+    while draft.is_none()
+        || (draft.is_some() && draft.as_ref().unwrap().data.is_none())
+    {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        draft = draft_draws::table
+            .order_by(draft_draws::created_at.desc())
+            .first::<DraftDraw>(&mut conn)
+            .optional()
+            .unwrap();
+    }
+
+    let draft = draft.unwrap();
+
+    rocket
+        .post(format!(
+            "/spars/{}/draws/{}/confirm",
+            spar.public_id, draft.public_id
+        ))
+        .header(ContentType::Form)
+        .dispatch();
+
+    rocket
+        .post(format!("/spars/{}/releasedraw", spar.public_id))
+        .header(ContentType::Form)
         .dispatch();
 
     rocket

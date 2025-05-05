@@ -149,6 +149,7 @@ pub struct SparSignup {
     pub spar_id: i64,
     pub as_judge: bool,
     pub as_speaker: bool,
+    pub partner_preference: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]

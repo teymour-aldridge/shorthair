@@ -1,12 +1,12 @@
 use fuzzcheck::{
-    Mutator,
     mutators::{
         grammar::{
-            AST, alternation, concatenation, grammar_based_ast_mutator, regex,
-            repetition,
+            alternation, concatenation, grammar_based_ast_mutator, regex,
+            repetition, AST,
         },
         map::MapMutator,
     },
+    Mutator,
 };
 
 pub type UsefulStringMutator = impl Mutator<String>;
