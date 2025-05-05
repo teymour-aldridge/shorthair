@@ -13,7 +13,7 @@ sources:
   - https://git.sr.ht/~teymour/eldemite
 secrets:
   - 5c0c5bc0-2b3a-4185-923d-ac4a9c0a6a09
-  - fe9881cc-e007-4f7c-93df-ee0a3ce63895
+  - 442be735-05de-423c-8250-6c3df985c252
 tasks:
   - install_rust: |
       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
