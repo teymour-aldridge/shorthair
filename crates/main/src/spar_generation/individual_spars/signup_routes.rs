@@ -9,8 +9,8 @@ use db::{
     user::User,
     DbConn,
 };
-use diesel::prelude::*;
 use diesel::Connection;
+use diesel::{prelude::*, select};
 use maud::Markup;
 use rocket::form::Form;
 use serde::Serialize;
@@ -277,19 +277,35 @@ pub async fn register_for_spar_page(
                     .load::<SparSeriesMember>(conn)
                     .unwrap();
 
+                let prev_value = prev.as_ref().map(|t| {
+                    match t.partner_preference {
+                        Some(partner) => {
+                            spar_series_members::table
+                                .filter(
+                                    spar_series_members::spar_series_id
+                                        .eq(spar.spar_series_id)
+                                        .and(spar_series_members::id.eq(partner)),
+                                )
+                                .select(spar_series_members::public_id)
+                                .first::<String>(conn)
+                                .unwrap()
+                        },
+                        None => String::new(),
+                    }
+                }).unwrap_or(String::new());
+
                 maud::html! {
                     div class="mb-3" {
                         label for="speaking_partner" class="form-label" {
                             "Preferred speaking partner"
                         }
-                        select class="form-select" id="speaking_partner" name="speaking_partner" {
-                            option value="" { "Select a speaking partner (optional)" }
-                            @for partner in &speaking_partners {
-                                option value=(partner.public_id) {
-                                    (partner.name)
-                                }
+                        select class="form-select" id="speaking_partner" name="speaking_partner"  {option value="" { "None" }
+                        @for partner in &speaking_partners {
+                            option value=(partner.public_id) selected[partner.public_id == prev_value] {
+                                (partner.name) (if partner.public_id == prev_value {" (current preference)"} else {""})
                             }
                         }
+                    }
                     }
                 }
             };
@@ -394,7 +410,44 @@ pub async fn do_register_for_spar(
                     .optional()
                     .unwrap()
                 {
-                    Some(t) => Some(t),
+                    Some(t) => {
+                        // todo: in addition for checking the case where you
+                        // attempt to select someone who has opted to go with
+                        // someone else, it might make sense to also handle the
+                        // case where
+                        //
+                        // A and B choose to speak with each other
+                        //
+                        // A then switches to speak with C, meaning that we have
+                        // a weird set of preferences
+                        //
+                        // (A -> C) and (B -> A)
+                        //
+                        // the correct behaviour might be to delete C, and add
+                        // an overview of speaker preferences on the signup page
+                        if select(diesel::dsl::exists(
+                            spar_signups::table.filter(
+                                spar_signups::spar_id.eq(spar.id).and(
+                                    spar_signups::member_id.eq(t).and(
+                                        spar_signups::partner_preference
+                                            .ne(Some(t)),
+                                    ),
+                                ),
+                            ),
+                        )).get_result::<bool>(conn).unwrap() {
+                            return Ok(error_403(
+                                Some(
+                                    "The person you have signed up to speak with
+                                        has selected a different speaking partner!."
+                                        .to_string(),
+                                ),
+                                None,
+                            ));
+
+                        } else {
+                            Some(t)
+                        }
+                    }
                     None => {
                         return Ok(error_403(
                             Some(
