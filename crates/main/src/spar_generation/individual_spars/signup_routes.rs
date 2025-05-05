@@ -226,8 +226,11 @@ pub async fn register_for_spar_page(
     spar_id: String,
     member_id: String,
     user: Option<User>,
+    span: TracingSpan,
 ) -> Option<Markup> {
-    db.run(|conn| {
+    let span1 = span.0.clone();
+    db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
                 .filter(spars::public_id.eq(spar_id))
@@ -374,8 +377,11 @@ pub async fn do_register_for_spar(
     member_id: String,
     form: Form<SignupForSpar>,
     user: Option<User>,
+    span: TracingSpan,
 ) -> Markup {
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
