@@ -128,86 +128,73 @@ pub async fn do_create_group(
 }
 
 #[get("/groups/<group_id>")]
-pub async fn view_groups(
+pub async fn view_group(
     group_id: String,
     db: DbConn,
-    user: Option<User>,
+    user: User,
     span: TracingSpan,
 ) -> Option<Markup> {
     let span1 = span.0.clone();
     db.run(move |conn| {
         let _guard = span1.enter();
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
-            let query_result = {
-                let group = groups::table
-                    .filter(groups::public_id.eq(group_id))
-                    .get_result::<Group>(conn)
-                    .optional()
-                    .unwrap();
-                group.map(|group| {
-                    let is_admin = select(exists(
-                        groups::table
-                            .filter(groups::id.eq(group.id))
-                            .inner_join(group_members::table)
-                            .filter(GroupMember::is_admin()),
-                    ))
-                    .get_result::<bool>(conn)
-                    .unwrap();
-                    let has_signing_power = select(exists(
-                        groups::table
-                            .filter(groups::id.eq(group.id))
-                            .inner_join(group_members::table)
-                            .filter(GroupMember::has_signing_power()),
-                    ))
-                    .get_result::<bool>(conn)
-                    .unwrap();
-                    (group, is_admin, has_signing_power)
-                })
-            };
+            let group = match groups::table
+                .filter(groups::public_id.eq(group_id))
+                .get_result::<Group>(conn)
+                .optional()
+                .unwrap() {
+                    Some(t) => t,
+                    None => {return Ok(None)}
+                };
 
-            if let Some((group, is_admin, has_signing_power)) = query_result {
-                let spar_series = spar_series::table
-                    .filter(spar_series::group_id.eq(group.id))
-                    .load::<SparSeries>(conn)?;
+            let has_permission = has_permission(
+                Some(&user),
+                &Permission::ModifyResourceInGroup(GroupRef(group.id)),
+                conn,
+            );
 
-                assert!(!is_admin || has_signing_power);
-                Ok(Some(page_of_body(html! {
-                    h1 { "Group: " (group.name) }
-                    @if is_admin {
-                        h3 {"Spars"}
-                        @if !spar_series.is_empty() {
-                            table class="table" {
-                                thead {
-                                    tr {
-                                        th scope="col" {"Series title"}
-                                        th {
+            if !has_permission {
+                return Ok(None);
+            }
+
+
+            let spar_series = spar_series::table
+                .filter(spar_series::group_id.eq(group.id))
+                .load::<SparSeries>(conn).unwrap();
+
+            Ok(Some(page_of_body(html! {
+                h1 { "Group: " (group.name) }
+
+                @if !spar_series.is_empty() {
+                    h3 { "Spars" }
+                    table class="table" {
+                        thead {
+                            tr {
+                                th scope="col" { "Series title" }
+                                th { "View series" }
+                            }
+                        }
+                        tbody {
+                            @for series in spar_series {
+                                tr {
+                                    th scope="row" { (series.title) }
+                                    td {
+                                        a href=(format!("/spar_series/{}", series.public_id)) {
                                             "View series"
-                                        }
-                                    }
-                                }
-                                tbody {
-                                    @for series in spar_series {
-                                        tr {
-                                            th scope="row" {
-                                                (series.title)
-                                            }
-                                            td {
-                                                a href=(format!("/spar_series/{}", series.public_id)) {
-                                                    "View series"
-                                                }
-                                            }
                                         }
                                     }
                                 }
                             }
                         }
-
-                        a class="btn btn-primary" href={ "/groups/" (group.public_id) "/spar_series/new" } { "New internal spar" }
                     }
-                }, user)))
-            } else {
-                Ok(None)
-            }
+                }
+
+                div class="mt-4" {
+                    a class="btn btn-primary" href={ "/groups/" (group.public_id) "/spar_series/new" } {
+                        "New internal spar"
+                    }
+                }
+            }, Some(user))))
         })
         .unwrap()
     })

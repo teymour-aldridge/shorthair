@@ -418,7 +418,7 @@ pub fn solve_lp(
                 + (-1 * difference_between_teams)
                 + 1 * (difference_between_speakers)
                 + (-5 * fewer_rooms_objective)
-                + 20 * partner_preferences,
+                + ((r_max as f64) * 20.0) * partner_preferences,
         )
         .using(good_lp::solvers::highs::highs);
 

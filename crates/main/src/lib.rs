@@ -25,7 +25,7 @@ use diesel_migrations::{
 };
 use groups::{
     create_group_page, create_new_spar_series_page, do_create_group,
-    do_create_new_spar_series, view_groups,
+    do_create_new_spar_series, view_group,
 };
 use html::page_of_body;
 use maud::{html, Markup};
@@ -329,7 +329,7 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 check_email_page,
                 confirm_login_with_code,
                 do_login_with_code,
-                view_groups,
+                view_group,
                 create_group_page,
                 do_create_group,
                 create_new_spar_series_page,
