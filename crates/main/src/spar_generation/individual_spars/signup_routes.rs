@@ -142,10 +142,15 @@ pub async fn do_spar_signup_search(
     db.run(move |conn| {
         let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            let spar = spars::table
+            let (spar, spar_series) = match spars::table
                 .filter(spars::public_id.eq(&spar_id))
-                .first::<Spar>(conn)
-                .optional()?;
+                .inner_join(spar_series::table)
+                .first::<(Spar, SparSeries)>(conn)
+                .optional().unwrap()
+            {
+                Some((spar, spar_series)) => (spar, spar_series),
+                None => return Ok(None)
+            };
 
             let query = search.query.clone();
 
@@ -159,60 +164,67 @@ pub async fn do_spar_signup_search(
                 )))
             }
 
-            if let Some(spar) = spar {
-                let fts_query = query.chars().filter(|char| {
-                    char.is_alphanumeric() || char.is_ascii_whitespace()
-                }).collect::<String>();
+            let fts_query = query.chars().filter(|char| {
+                char.is_alphanumeric() || char.is_ascii_whitespace()
+            }).collect::<String>();
 
-                let raw_query =
-                    r#"SELECT ssm.*
-                     FROM spar_series_members_fts fts
-                     INNER JOIN spar_series_members ssm ON ssm.id = fts.rowid
-                     WHERE ssm.spar_series_id = ? AND fts.name MATCH (?)||'*'
-                     ORDER BY rank"#;
+            let raw_query =
+                r#"SELECT ssm.*
+                 FROM spar_series_members_fts fts
+                 INNER JOIN spar_series_members ssm ON ssm.id = fts.rowid
+                 WHERE ssm.spar_series_id = ? AND fts.name MATCH (?)||'*'
+                 ORDER BY rank"#;
 
-                let matches = diesel::sql_query(raw_query)
-                    .bind::<diesel::sql_types::BigInt, _>(spar.spar_series_id)
-                    .bind::<diesel::sql_types::Text, _>(fts_query)
-                    .load::<SparSeriesMember>(conn).unwrap();
+            let matches = diesel::sql_query(raw_query)
+                .bind::<diesel::sql_types::BigInt, _>(spar.spar_series_id)
+                .bind::<diesel::sql_types::Text, _>(fts_query)
+                .load::<SparSeriesMember>(conn).unwrap();
 
-                let search_results = maud::html! {
-                    hr {}
+            let search_results = maud::html! {
+                hr {}
 
-                    h3 {"Search results"}
+                h3 {"Search results"}
 
-                    @if matches.is_empty() {
+                @if matches.is_empty() {
+                    @if spar_series.allow_join_requests {
+                        h5 {"Unfortunately no results were found for that user.
+                             If you are not a member of this spar series, please
+                             ask to join "
+                             a href=(format!("/spar_series/{}/request2join", {spar_series.public_id})) {"here"}
+                             "."
+                        }
+                    } @else {
                         h5 {"Unfortunately no results were found for that user.
                              Please ask the spar administrator to enter your
                              name into the system."}
-                    } else {
-                        table class="table" {
-                            thead {
-                                tr {
-                                    th scope="col" { "Name" }
-                                    th scope="col" { "Register link" }
-                                }
+                    }
+
+
+                } else {
+                    table class="table" {
+                        thead {
+                            tr {
+                                th scope="col" { "Name" }
+                                th scope="col" { "Register link" }
                             }
-                            tbody {
-                                @for member in &matches {
-                                    tr {
-                                        td { (member.name) }
-                                        td {
-                                            a href={"/spars/" (spar_id) "/reg/" (member.public_id)} {
-                                                "Register"
-                                            }
+                        }
+                        tbody {
+                            @for member in &matches {
+                                tr {
+                                    td { (member.name) }
+                                    td {
+                                        a href={"/spars/" (spar_id) "/reg/" (member.public_id)} {
+                                            "Register"
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                };
+                }
+            };
 
-                Ok(Some(render_search_form(None, user, &maud::html! {}, Some(&search), Some(search_results))))
-            } else {
-                return Ok(None);
-            }
+            Ok(Some(render_search_form(None, user, &maud::html! {}, Some(&search), Some(search_results))))
         })
         .unwrap()
     })
