@@ -1,6 +1,6 @@
 use chrono::Utc;
 use db::{
-    group::{Group, GroupMember},
+    group::Group,
     schema::{group_members, groups, spar_series},
     spar::SparSeries,
     user::User,

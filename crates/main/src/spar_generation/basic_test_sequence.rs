@@ -227,13 +227,33 @@ fn basic_test_sequence() {
         .unwrap();
     assert_eq!(members.len(), 9);
 
-    for member in members {
-        let (as_judge, as_speaker) =
+    for member in &members {
+        let (as_judge, as_speaker, partner_preference) =
             if member.name.to_ascii_lowercase().contains("speaker") {
-                (false, true)
+                (
+                    false,
+                    true,
+                    match member.name.as_str() {
+                        "Speaker1" => Some(
+                            members
+                                .iter()
+                                .find(|member| member.name == "Speaker2")
+                                .map(|member| member.public_id.clone())
+                                .unwrap(),
+                        ),
+                        "Speaker3" => Some(
+                            members
+                                .iter()
+                                .find(|member| member.name == "Speaker4")
+                                .map(|member| member.public_id.clone())
+                                .unwrap(),
+                        ),
+                        _ => None,
+                    },
+                )
             } else {
                 assert!(member.name.to_ascii_lowercase().contains("judge"));
-                (true, false)
+                (true, false, None)
             };
         rocket
             .post(format!(
@@ -245,7 +265,8 @@ fn basic_test_sequence() {
                 serde_urlencoded::to_string(&SignupForSpar {
                     as_judge,
                     as_speaker,
-                    speaking_partner: None,
+                    speaking_partner: partner_preference
+                        .map(|t| t.parse().unwrap()),
                 })
                 .unwrap(),
             )
@@ -304,6 +325,66 @@ fn basic_test_sequence() {
         ))
         .header(ContentType::Form)
         .dispatch();
+
+    let rooms = spar_rooms::table
+        .filter(spar_rooms::spar_id.eq(spar.id))
+        .load::<SparRoom>(&mut conn)
+        .unwrap();
+
+    assert_eq!(rooms.len(), 1);
+    let room = &rooms[0];
+
+    let _verify_partner_preferences = {
+        // Verify that speaker1 and speaker2 are on the same team, same for speaker3 and speaker4
+        let repr = room.repr(&mut conn).unwrap();
+        let members = spar_series_members::table
+            .load::<SparSeriesMember>(&mut conn)
+            .unwrap();
+
+        // Find speaker1, speaker2, speaker3, speaker4 member IDs
+        let find_member_id = |name: &str| -> i64 {
+            members
+                .iter()
+                .find(|m| m.name == name)
+                .expect(&format!("Could not find member with name {}", name))
+                .id
+        };
+
+        let speaker1_id = find_member_id("Speaker1");
+        let speaker2_id = find_member_id("Speaker2");
+        let speaker3_id = find_member_id("Speaker3");
+        let speaker4_id = find_member_id("Speaker4");
+
+        // Find which team each speaker is on
+        let find_team_for_speaker = |speaker_id: i64| -> i64 {
+            for team in &repr.teams {
+                for speaker_db_id in &team.speakers {
+                    let speaker = &repr.speakers[speaker_db_id];
+                    if repr.members[&speaker.member_id].id == speaker_id {
+                        return team.inner.id;
+                    }
+                }
+            }
+            panic!("Could not find team for speaker ID {}", speaker_id);
+        };
+
+        let speaker1_team = find_team_for_speaker(speaker1_id);
+        let speaker2_team = find_team_for_speaker(speaker2_id);
+        let speaker3_team = find_team_for_speaker(speaker3_id);
+        let speaker4_team = find_team_for_speaker(speaker4_id);
+
+        // Assert that speaker1 and speaker2 are on the same team
+        assert_eq!(
+            speaker1_team, speaker2_team,
+            "Speaker1 and Speaker2 should be on the same team"
+        );
+
+        // Assert that speaker3 and speaker4 are on the same team
+        assert_eq!(
+            speaker3_team, speaker4_team,
+            "Speaker3 and Speaker4 should be on the same team"
+        );
+    };
 
     // (4)(c) ensure that all emails are sent
 

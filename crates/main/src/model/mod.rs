@@ -65,12 +65,12 @@ pub fn make_test_runner() -> impl Fn(&Vec<Action>) {
     diesel::sql_query("PRAGMA journal_mode=WAL")
         .execute(&mut conn)
         .expect("Failed to enable WAL mode");
-    diesel::sql_query("PRAGMA foreign_keys=ON")
+    diesel::sql_query("PRAGMA busy_timeout = 1000;")
         .execute(&mut conn)
-        .expect("Failed to enable foreign keys");
-    diesel::sql_query("pragma synchronous = off;")
+        .expect("Failed to set busy timeout");
+    diesel::sql_query("PRAGMA foreign_keys = ON;")
         .execute(&mut conn)
-        .expect("Failed to disable sync commit foreign keys");
+        .expect("Failed to disable foreign keys");
 
     let rocket = crate::make_rocket(&db_name.clone());
     let figment = rocket.figment().clone().merge((

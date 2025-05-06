@@ -392,6 +392,7 @@ pub fn solve_lp(
         let mut expr = Expression::default();
         for (participant_id, signup) in person_and_signup_data.iter() {
             if let Some(preferred_partner) = signup.partner_preference {
+                tracing::trace!("Participant: {participant_id} has preferred partner {preferred_partner}");
                 for r in 0..r_max {
                     for j in 0..=3 {
                         let z = vars.add(VariableDefinition::new());
@@ -429,7 +430,7 @@ pub fn solve_lp(
 
     tracing::trace!("Constructed problem, now starting to solve problem");
 
-    let solution = problem.solve().unwrap();
+    let solution = problem.set_mip_rel_gap(0.012).unwrap().solve().unwrap();
 
     tracing::trace!("Solved problem!");
 

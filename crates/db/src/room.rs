@@ -71,11 +71,12 @@ impl SparRoom {
 
 #[derive(Debug, Clone)]
 pub struct SparRoomRepr {
+    pub inner: SparRoom,
+    /// List of all teams assigned to this room.
+    ///
     /// The teams will be stored here in the order they speak.
     ///
     /// For BP teams[0] = og, teams[1] = oo, teams[2] = cg, teams[3] = co
-    pub inner: SparRoom,
-    /// List of all teams assigned to this room.
     pub teams: Vec<TeamRepr>,
     /// Maps speakers to relevant records.
     pub speakers: HashMap<i64, SparRoomTeamSpeaker>,

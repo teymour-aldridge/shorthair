@@ -10,6 +10,7 @@ use db::{
     DbConn,
 };
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
+use itertools::Itertools;
 use maud::Markup;
 use tracing::Instrument;
 
@@ -111,7 +112,7 @@ fn refresh_tag() -> Markup {
 }
 
 /// Renders the draw data as a table.
-#[tracing::instrument(skip(conn))]
+#[tracing::instrument(skip(draw_data, conn))]
 pub fn render_draw_data(
     draw_data: HashMap<usize, SolverRoom>,
     conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
@@ -140,9 +141,10 @@ pub fn render_draw_data(
                     }
                 }
                 tbody {
-                    @for (room_number, room) in draw_data.iter() {
-                        tr {
-                            td { (room_number) }
+                    @for (room_number, room)
+                        in draw_data.iter().sorted_by_key(|(num, _)| *num) {
+
+                            tr { td { (room_number) }
 
                             // Opening Government
                             td {
@@ -195,7 +197,7 @@ pub fn render_draw_data(
     }
 }
 
-#[tracing::instrument(skip(conn))]
+#[tracing::instrument(skip(current_draw, all_draws, spar, user, conn))]
 fn render_draft_management_page(
     current_draw: &DraftDraw,
     draw_data: Option<HashMap<usize, SolverRoom>>,

@@ -36,6 +36,7 @@ pub fn compute_scores(
         .inner_join(spars::table)
         .filter(spars::spar_series_id.eq(series_id))
         .inner_join(adjudicator_ballots::table)
+        .order_by(spars::created_at)
         .select(spar_rooms::all_columns)
         .load::<SparRoom>(conn)?;
 
@@ -49,12 +50,13 @@ pub fn compute_scores(
         .collect::<HashMap<_, _>>();
 
     for room in rooms_with_results {
-        let ballot = room.canonical_ballot(conn)?.expect(
+        let ballot = room.canonical_ballot(conn).unwrap().expect(
             "should not be possible for the result to be missing having
             retrieved only rooms with a ballot having this in the previous step
             (are you sure this is running within a transaction?)",
         );
-        let room_repr = room.repr(conn)?;
+        tracing::trace!("Ballot is {ballot:?}");
+        let room_repr = room.repr(conn).unwrap();
 
         let teams = &room_repr.teams;
         let (og, oo, cg, co) = {
@@ -98,6 +100,11 @@ pub fn compute_scores(
                         .clone()
                 })
                 .collect::<Vec<_>>();
+
+            tracing::trace!(
+                "Before, scores are {og:?}, {oo:?}, {cg:?}, {co:?}"
+            );
+
             (og, oo, cg, co)
         };
 
@@ -145,65 +152,71 @@ pub fn compute_scores(
         let new_teams =
             weng_lin_multi_team(&teams_and_ranks, &WengLinConfig::default());
 
+        tracing::trace!("New teams are {new_teams:?}");
+
         let _update_og = {
             let new_og = &new_teams[0];
+
             let og_speakers = &teams[0].speakers;
-            let speaker_1 = member_ids_to_scores_map
-                .get_mut(&room_repr.speakers[&og_speakers[0]].member_id)
-                .unwrap();
-            *speaker_1 = new_og[0];
+            member_ids_to_scores_map.insert(
+                room_repr.speakers[&og_speakers[0]].member_id,
+                new_og[0],
+            );
+
             if og_speakers.len() > 1 {
-                let speaker_2 = member_ids_to_scores_map
-                    .get_mut(&room_repr.speakers[&og_speakers[1]].member_id)
-                    .unwrap();
-                *speaker_2 = new_og[1];
+                member_ids_to_scores_map.insert(
+                    room_repr.speakers[&og_speakers[1]].member_id,
+                    new_og[1],
+                );
             }
         };
 
         let _update_oo = {
             let new_oo = &new_teams[1];
             let oo_speakers = &teams[1].speakers;
-            let speaker_1 = member_ids_to_scores_map
-                .get_mut(&room_repr.speakers[&oo_speakers[0]].member_id)
-                .unwrap();
-            *speaker_1 = new_oo[0];
+            member_ids_to_scores_map.insert(
+                room_repr.speakers[&oo_speakers[0]].member_id,
+                new_oo[0],
+            );
             if oo_speakers.len() > 1 {
-                let speaker_2 = member_ids_to_scores_map
-                    .get_mut(&room_repr.speakers[&oo_speakers[1]].member_id)
-                    .unwrap();
-                *speaker_2 = new_oo[1];
+                member_ids_to_scores_map.insert(
+                    room_repr.speakers[&oo_speakers[1]].member_id,
+                    new_oo[1],
+                );
             }
         };
 
         let _update_cg = {
             let new_cg = &new_teams[2];
             let cg_speakers = &teams[2].speakers;
-            let speaker_1 = member_ids_to_scores_map
-                .get_mut(&room_repr.speakers[&cg_speakers[0]].member_id)
-                .unwrap();
-            *speaker_1 = new_cg[0];
+            member_ids_to_scores_map.insert(
+                room_repr.speakers[&cg_speakers[0]].member_id,
+                new_cg[0],
+            );
             if cg_speakers.len() > 1 {
-                let speaker_2 = member_ids_to_scores_map
-                    .get_mut(&room_repr.speakers[&cg_speakers[1]].member_id)
-                    .unwrap();
-                *speaker_2 = new_cg[1];
+                member_ids_to_scores_map.insert(
+                    room_repr.speakers[&cg_speakers[1]].member_id,
+                    new_cg[1],
+                );
             }
         };
 
         let _update_co = {
             let new_co = &new_teams[2];
             let co_speakers = &teams[2].speakers;
-            let speaker_1 = member_ids_to_scores_map
-                .get_mut(&room_repr.speakers[&co_speakers[0]].member_id)
-                .unwrap();
-            *speaker_1 = new_co[0];
+            member_ids_to_scores_map.insert(
+                room_repr.speakers[&co_speakers[0]].member_id,
+                new_co[0],
+            );
             if co_speakers.len() > 1 {
-                let speaker_2 = member_ids_to_scores_map
-                    .get_mut(&room_repr.speakers[&co_speakers[1]].member_id)
-                    .unwrap();
-                *speaker_2 = new_co[1];
+                member_ids_to_scores_map.insert(
+                    room_repr.speakers[&co_speakers[1]].member_id,
+                    new_co[1],
+                );
             }
         };
+
+        tracing::trace!("After, scores are {og:?}, {oo:?}, {cg:?}, {co:?}");
     }
 
     Ok(member_ids_to_scores_map

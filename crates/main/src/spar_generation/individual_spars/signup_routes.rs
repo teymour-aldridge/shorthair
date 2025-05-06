@@ -18,7 +18,7 @@ use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::{
-    html::{error_403, page_of_body},
+    html::{error_403, error_404, page_of_body},
     model::sync::id::gen_uuid,
     request_ids::TracingSpan,
 };
@@ -413,6 +413,23 @@ pub async fn do_register_for_spar(
                 ));
             }
 
+            let member = match spar_series_members::table
+                .filter(spar_series_members::public_id.eq(member_id))
+                .first::<SparSeriesMember>(conn)
+                .optional()
+                .unwrap() {
+                    Some(t) => t,
+                    None =>{
+                        return Ok(error_404(
+                            Some(
+                                "No such member in spar."
+                                    .to_string(),
+                            ),
+                            None,
+                        ))
+                    }
+                };
+
             let speaking_partner_id = if let Some(partner) =
                 form.speaking_partner
             {
@@ -429,7 +446,7 @@ pub async fn do_register_for_spar(
                     .optional()
                     .unwrap()
                 {
-                    Some(t) => {
+                    Some(speaking_partner_id) => {
                         // todo: in addition for checking the case where you
                         // attempt to select someone who has opted to go with
                         // someone else, it might make sense to also handle the
@@ -442,17 +459,17 @@ pub async fn do_register_for_spar(
                         //
                         // (A -> C) and (B -> A)
                         //
-                        // the correct behaviour might be to delete C, and add
-                        // an overview of speaker preferences on the signup page
+                        // the correct behaviour might be to delete B -> A, and
+                        // add an overview of speaker preferences on the signup
+                        // page
                         if select(diesel::dsl::exists(
-                            spar_signups::table.filter(
-                                spar_signups::spar_id.eq(spar.id).and(
-                                    spar_signups::member_id.eq(t).and(
-                                        spar_signups::partner_preference
-                                            .ne(Some(t)),
-                                    ),
-                                ),
-                            ),
+                            spar_signups::table
+                                .filter(
+                                    spar_signups::spar_id.eq(spar.id)
+                                )
+                                .filter(spar_signups::member_id.eq(speaking_partner_id))
+                                .filter(spar_signups::partner_preference.is_not_null())
+                                .filter(spar_signups::partner_preference.ne(Some(member.id))),
                         )).get_result::<bool>(conn).unwrap() {
                             return Ok(error_403(
                                 Some(
@@ -464,7 +481,7 @@ pub async fn do_register_for_spar(
                             ));
 
                         } else {
-                            Some(t)
+                            Some(speaking_partner_id)
                         }
                     }
                     None => {
@@ -481,11 +498,6 @@ pub async fn do_register_for_spar(
             } else {
                 None
             };
-
-            let member = spar_series_members::table
-                .filter(spar_series_members::public_id.eq(member_id))
-                .first::<SparSeriesMember>(conn)
-                .unwrap();
 
             let existing_signup = spar_signups::table
                 .filter(spar_signups::spar_id.eq(spar.id))
