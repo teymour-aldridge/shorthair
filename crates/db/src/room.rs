@@ -93,12 +93,14 @@ impl SparRoomRepr {
     ) -> Result<Self, diesel::result::Error> {
         let room = spar_rooms::table
             .filter(spar_rooms::id.eq(room_id))
-            .first::<SparRoom>(conn)?;
+            .first::<SparRoom>(conn)
+            .unwrap();
 
         let teams = spar_teams::table
             .filter(spar_teams::room_id.eq(room.id))
             .order_by(spar_teams::position.asc())
-            .load::<SparRoomTeam>(conn)?;
+            .load::<SparRoomTeam>(conn)
+            .unwrap();
         assert_eq!(teams.len(), 4);
 
         let speakers = spar_speakers::table
@@ -108,7 +110,8 @@ impl SparRoomRepr {
             // the application rely on
             .order_by(spar_speakers::id.asc())
             .select(spar_speakers::all_columns)
-            .load::<SparRoomTeamSpeaker>(conn)?;
+            .load::<SparRoomTeamSpeaker>(conn)
+            .unwrap();
 
         let team_repr = {
             let mut team_repr = Vec::with_capacity(teams.len());

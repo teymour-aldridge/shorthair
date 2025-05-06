@@ -54,9 +54,9 @@ pub fn render_draw(
                 }
             }
             tbody {
-                @for room in &room_info {
+                @for (i, room) in room_info.iter().enumerate() {
                     tr {
-                        td { (room.inner.public_id) }
+                        td { (i) }
                     td {
                         @for speaker in &room.teams[0].speakers {
                             div { (room.members[&room.speakers[&speaker].member_id].name) }

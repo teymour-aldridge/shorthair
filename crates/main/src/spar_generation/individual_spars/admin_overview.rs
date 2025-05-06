@@ -112,7 +112,8 @@ pub async fn single_spar_overview_for_admin_page(
                 Some(SparAdminTab::Draw) | None => {
                     let draw = spar_rooms::table
                         .filter(spar_rooms::spar_id.eq(spar.id))
-                        .load::<SparRoom>(conn)?
+                        .order_by(spar_rooms::public_id)
+                        .load::<SparRoom>(conn).unwrap()
                         .into_iter()
                         .map(|room| SparRoomRepr::of_id(room.id, conn))
                         .collect::<Result<Vec<SparRoomRepr>, _>>()?;

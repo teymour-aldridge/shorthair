@@ -129,7 +129,9 @@ impl Spar {
     ) -> Result<Vec<SparRoomRepr>, diesel::result::Error> {
         let rooms = spar_rooms::table
             .filter(spar_rooms::spar_id.eq(self.id))
-            .load::<SparRoom>(conn)?;
+            .order_by(spar_rooms::public_id)
+            .load::<SparRoom>(conn)
+            .unwrap();
 
         let mut ret = Vec::with_capacity(rooms.len());
 

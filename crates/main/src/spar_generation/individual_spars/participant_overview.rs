@@ -28,7 +28,7 @@ pub async fn single_spar_overview_for_participants_page(
             let spar = spars::table
                 .filter(spars::public_id.eq(spar_id))
                 .first::<Spar>(conn)
-                .optional()?;
+                .optional().unwrap();
 
             if let Some(spar) = spar {
                 if !spar.release_draw {
@@ -46,6 +46,7 @@ pub async fn single_spar_overview_for_participants_page(
                     let spar_id = spar.id;
                     let room_ids = spar_rooms::table
                         .filter(spar_rooms::spar_id.eq(spar_id))
+                        .order_by(spar_rooms::public_id)
                         .select(spar_rooms::id)
                         .load::<i64>(conn)?;
                     room_ids
