@@ -20,8 +20,9 @@ use rocket::{
     response::{Flash, Redirect},
 };
 use serde::Serialize;
+use tracing::Instrument;
 
-use crate::{html::page_of_body, util::short_random};
+use crate::{html::page_of_body, request_ids::TracingSpan, util::short_random};
 
 #[get("/login")]
 pub async fn login_with_password(
@@ -50,7 +51,9 @@ pub async fn do_password_login(
     form: Form<PasswordLoginForm>,
     jar: &CookieJar<'_>,
     db: DbConn,
+    span: TracingSpan,
 ) -> Result<maud::Markup, Flash<Redirect>> {
+    let span1 = span.0.clone();
     if user.is_some() {
         return Err(Flash::error(
             Redirect::to("/"),
@@ -60,6 +63,7 @@ pub async fn do_password_login(
 
     let (ret, set_cookie) = db
         .run(move |conn| {
+            let _guard = span1.enter();
             let user: Option<User> = users::table
                 .filter(users::email.eq(&form.email))
                 .first::<User>(conn)
@@ -109,6 +113,7 @@ pub async fn do_password_login(
                 }
             }
         })
+        .instrument(span.0)
         .await;
 
     if let Some(cookie) = set_cookie {
@@ -208,7 +213,9 @@ pub async fn do_login(
     login: Form<LoginForm>,
     db: DbConn,
     user: Option<User>,
+    span: TracingSpan,
 ) -> Result<Redirect, Flash<Redirect>> {
+    let span1 = span.0.clone();
     if user.is_some() {
         return Err(Flash::error(
             Redirect::to("/"),
@@ -221,6 +228,7 @@ pub async fn do_login(
     let response = db
         .clone()
         .run(move |conn| {
+            let _guard = span1.enter();
             conn.transaction(|conn| -> Result<_, diesel::result::Error> {
                 let user: Option<User> = users::table
                     .filter(users::email.eq(login.email.clone()))
@@ -292,6 +300,7 @@ pub async fn do_login(
             })
             .unwrap()
         })
+        .instrument(span.0)
         .await;
 
     response

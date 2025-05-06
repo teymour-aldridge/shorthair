@@ -131,7 +131,7 @@ pub async fn generate_draw(
 
             Ok(Some(Ok((draft_draw_id, draft_id, elo_scores, signups))))
         }).unwrap()
-    }).await;
+    }).instrument(span.0.clone()).await;
 
     let (draft_draw_id, draft_public_id, elo_scores, signups) = match ctx {
         Some(Ok((draft_draw_id, draft_public_id, elo_scores, signups))) => {

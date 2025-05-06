@@ -74,10 +74,11 @@ pub async fn single_spar_overview_for_admin_page(
     msg: Option<FlashMessage<'_>>,
     span: TracingSpan,
 ) -> Option<Result<Markup, Unauthorized<()>>> {
+    let span1 = span.0.clone();
     let spar_id = spar_id.to_string();
     let msg = msg.map(|msg| msg.message().to_string());
     db.run(move |conn| {
-        let _guard = span.0.enter();
+        let _guard = span1.enter();
         conn.transaction::<_, diesel::result::Error, _>(move |conn| {
             let spar = spars::table
                 .filter(spars::public_id.eq(&spar_id))
@@ -295,6 +296,7 @@ pub async fn single_spar_overview_for_admin_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 #[post("/spars/<spar_id>/set_is_open?<state>")]

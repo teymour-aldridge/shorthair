@@ -125,7 +125,7 @@ fn render_search_form(
     page_of_body(markup, user)
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, Debug)]
 pub struct SearchForm {
     query: String,
 }
@@ -360,6 +360,7 @@ pub async fn register_for_spar_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -524,5 +525,6 @@ pub async fn do_register_for_spar(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }

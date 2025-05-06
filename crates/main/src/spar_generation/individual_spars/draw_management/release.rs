@@ -17,10 +17,12 @@ use either::Either;
 use email::send_mail;
 use maud::Markup;
 use rocket::response::Redirect;
+use tracing::Instrument;
 
 use crate::{
     html::{error_403, error_404},
     permissions::{has_permission, Permission},
+    request_ids::TracingSpan,
     resources::GroupRef,
 };
 
@@ -30,9 +32,12 @@ pub async fn do_release_draw(
     user: User,
     db: DbConn,
     released: bool,
+    span: TracingSpan,
 ) -> Either<Markup, Redirect> {
+    let span1 = span.0.clone();
     let db = Arc::new(db);
     db.clone().run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = match spars::table
                 .filter(spars::public_id.eq(&spar_id))
@@ -118,5 +123,6 @@ pub async fn do_release_draw(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }

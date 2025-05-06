@@ -21,6 +21,7 @@ use diesel::{
 };
 use maud::Markup;
 use rocket::response::{Flash, Redirect};
+use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -130,6 +131,7 @@ pub async fn confirm_draw_page(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 
@@ -306,5 +308,6 @@ pub async fn do_confirm_draw(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }

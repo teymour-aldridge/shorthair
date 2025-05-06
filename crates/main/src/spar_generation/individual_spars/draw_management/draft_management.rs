@@ -11,6 +11,7 @@ use db::{
 };
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use maud::Markup;
+use tracing::Instrument;
 
 use crate::{
     html::page_of_body,
@@ -95,6 +96,7 @@ pub async fn view_draft_draw(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
 

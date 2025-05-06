@@ -8,15 +8,17 @@ use diesel::prelude::*;
 
 use maud::Markup;
 use rocket::response::Redirect;
+use tracing::Instrument;
 
 use crate::{
     html::{error_403, page_of_body},
     permissions::{has_permission, Permission},
+    request_ids::TracingSpan,
 };
 
 #[post("/spars/<spar_id>/mark_complete?<force>")]
 pub async fn do_mark_spar_complete(
-    spar_id: String,
+    spar_id: &str,
     user: User,
     db: DbConn,
     // whether we should over-ride issues (e.g. missing ballots, no spar was
@@ -24,8 +26,12 @@ pub async fn do_mark_spar_complete(
     //
     // todo: should people be able to "un-mark" spars?
     force: bool,
+    span: TracingSpan,
 ) -> Option<Result<Redirect, Markup>> {
+    let spar_id = spar_id.to_string();
+    let span1 = span.0.clone();
     db.run(move |conn| {
+        let _guard = span1.enter();
         conn.transaction(|conn| -> Result<_, diesel::result::Error> {
             let spar = spars::table
                 .filter(spars::public_id.eq(spar_id))
@@ -144,5 +150,6 @@ pub async fn do_mark_spar_complete(
         })
         .unwrap()
     })
+    .instrument(span.0)
     .await
 }
