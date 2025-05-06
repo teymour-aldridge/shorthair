@@ -78,7 +78,10 @@ pub fn render_draw(
                         }
                     }
                         td {
-                            @for adj in &room.judges {
+                            @for (i, adj) in room.judges.iter().enumerate() {
+                                @if i > 0 {
+                                    ", "
+                                }
                                 (room.members[&adj.member_id].name.clone())
                                 @if let Some(ballot) = ballots.get(&adj.id) {
                                     " ("
