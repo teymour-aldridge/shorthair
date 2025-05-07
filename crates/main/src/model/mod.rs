@@ -58,7 +58,7 @@ pub fn make_test_runner() -> impl Fn(&Vec<Action>) {
 
     use diesel::{Connection, RunQueryDsl};
 
-    let db_name = Arc::new(format!("{}.db", Uuid::now_v7()));
+    let db_name = Arc::new(format!("{}.db", Uuid::new_v4()));
 
     let mut conn = diesel::SqliteConnection::establish(&db_name.to_string())
         .expect("Database connection failed");
@@ -70,7 +70,7 @@ pub fn make_test_runner() -> impl Fn(&Vec<Action>) {
         .expect("Failed to set busy timeout");
     diesel::sql_query("PRAGMA foreign_keys = ON;")
         .execute(&mut conn)
-        .expect("Failed to disable foreign keys");
+        .expect("Failed to enable foreign keys");
 
     let rocket = crate::make_rocket(&db_name.clone());
     let figment = rocket.figment().clone().merge((

@@ -419,7 +419,9 @@ pub fn solve_lp(
                 + ((-1.0 * (r_max as f64) * 10.0) * difference_between_teams)
                 + (r_max as f64) * (difference_between_speakers)
                 + ((-1.0 * (r_max as f64) * 50.0) * fewer_rooms_objective)
-                + ((r_max as f64) * 20.0) * partner_preferences,
+                // todo: should this grow faster than linear in the number of
+                // rooms?
+                + ((r_max as f64) * 1000.0) * partner_preferences,
         )
         .using(good_lp::solvers::highs::highs);
 
@@ -430,7 +432,7 @@ pub fn solve_lp(
 
     tracing::trace!("Constructed problem, now starting to solve problem");
 
-    let solution = problem.set_mip_rel_gap(0.05).unwrap().solve().unwrap();
+    let solution = problem.set_mip_rel_gap(0.012).unwrap().solve().unwrap();
 
     tracing::trace!("Solved problem!");
 
@@ -881,6 +883,265 @@ mod test_allocations {
                 == 2
         });
         assert!(matched_weakest_and_strongest, "failed: room {room:#?}")
+    }
+
+    #[test]
+    fn case_with_lots_of_constraints() {
+        let mut participants = HashMap::new();
+
+        // Add all participants from the provided data
+        participants.insert(
+            1,
+            SparSignup {
+                id: 67,
+                public_id: "079da0b7-a939-40da-b7df-de627a429d91".to_string(),
+                member_id: 1,
+                spar_id: 4,
+                as_judge: true,
+                as_speaker: true,
+                partner_preference: Some(2),
+            },
+        );
+        participants.insert(
+            2,
+            SparSignup {
+                id: 68,
+                public_id: "1536d18c-b42e-4509-9f78-4eac74b0f09b".to_string(),
+                member_id: 2,
+                spar_id: 4,
+                as_judge: false,
+                as_speaker: true,
+                partner_preference: Some(1),
+            },
+        );
+        participants.insert(
+            3,
+            SparSignup {
+                id: 69,
+                public_id: "11189014-8dfd-4f79-b78b-2b4f59dba7c9".to_string(),
+                member_id: 3,
+                spar_id: 4,
+                as_judge: true,
+                as_speaker: true,
+                partner_preference: Some(4),
+            },
+        );
+        participants.insert(
+            4,
+            SparSignup {
+                id: 82,
+                public_id: "7a5ea018-2c45-495a-b73f-323d31a5ca25".to_string(),
+                member_id: 4,
+                spar_id: 4,
+                as_judge: false,
+                as_speaker: true,
+                partner_preference: Some(3),
+            },
+        );
+        participants.insert(
+            5,
+            SparSignup {
+                id: 70,
+                public_id: "9e1beec5-d810-4da2-939e-da7b8d06c4a6".to_string(),
+                member_id: 5,
+                spar_id: 4,
+                as_judge: true,
+                as_speaker: true,
+                partner_preference: None,
+            },
+        );
+        participants.insert(
+            6,
+            SparSignup {
+                id: 71,
+                public_id: "5eaf028d-ee7d-4400-b5b3-6fbdbd6c3f95".to_string(),
+                member_id: 6,
+                spar_id: 4,
+                as_judge: true,
+                as_speaker: true,
+                partner_preference: None,
+            },
+        );
+        participants.insert(
+            7,
+            SparSignup {
+                id: 72,
+                public_id: "09f70d42-2993-4e6e-a7b2-4a3f6d8254b5".to_string(),
+                member_id: 7,
+                spar_id: 4,
+                as_judge: true,
+                as_speaker: true,
+                partner_preference: None,
+            },
+        );
+        participants.insert(
+            8,
+            SparSignup {
+                id: 73,
+                public_id: "ffdddcb3-bd8a-456c-8405-00c4e07eccd0".to_string(),
+                member_id: 8,
+                spar_id: 4,
+                as_judge: false,
+                as_speaker: true,
+                partner_preference: Some(9),
+            },
+        );
+        participants.insert(
+            9,
+            SparSignup {
+                id: 74,
+                public_id: "e3aaa465-51e1-4aba-9d00-9943bf12bf8b".to_string(),
+                member_id: 9,
+                spar_id: 4,
+                as_judge: false,
+                as_speaker: true,
+                partner_preference: Some(8),
+            },
+        );
+        participants.insert(
+            10,
+            SparSignup {
+                id: 75,
+                public_id: "69644286-7938-4f8f-92a8-8fa0c69a4583".to_string(),
+                member_id: 10,
+                spar_id: 4,
+                as_judge: false,
+                as_speaker: true,
+                partner_preference: None,
+            },
+        );
+        participants.insert(
+            12,
+            SparSignup {
+                id: 76,
+                public_id: "c5806ec8-3460-410f-b45f-a3643f7944a5".to_string(),
+                member_id: 12,
+                spar_id: 4,
+                as_judge: false,
+                as_speaker: true,
+                partner_preference: None,
+            },
+        );
+        participants.insert(
+            13,
+            SparSignup {
+                id: 77,
+                public_id: "2a54a2df-1a76-405c-8941-65f2bb258eed".to_string(),
+                member_id: 13,
+                spar_id: 4,
+                as_judge: false,
+                as_speaker: true,
+                partner_preference: None,
+            },
+        );
+        participants.insert(
+            14,
+            SparSignup {
+                id: 78,
+                public_id: "198d5de0-9aa6-441e-90f6-9d3a62b7e066".to_string(),
+                member_id: 14,
+                spar_id: 4,
+                as_judge: false,
+                as_speaker: true,
+                partner_preference: Some(15),
+            },
+        );
+        participants.insert(
+            15,
+            SparSignup {
+                id: 79,
+                public_id: "935d9d16-80a3-40c7-acc6-b32e8596673f".to_string(),
+                member_id: 15,
+                spar_id: 4,
+                as_judge: false,
+                as_speaker: true,
+                partner_preference: Some(14),
+            },
+        );
+        participants.insert(
+            16,
+            SparSignup {
+                id: 80,
+                public_id: "118ded63-5d9a-4351-8979-77c5a92ec24e".to_string(),
+                member_id: 16,
+                spar_id: 4,
+                as_judge: true,
+                as_speaker: false,
+                partner_preference: None,
+            },
+        );
+        participants.insert(
+            17,
+            SparSignup {
+                id: 81,
+                public_id: "982791ef-1ef7-41b0-9ef9-c83dd46ce490".to_string(),
+                member_id: 17,
+                spar_id: 4,
+                as_judge: true,
+                as_speaker: false,
+                partner_preference: None,
+            },
+        );
+
+        let mut elo_scores = HashMap::new();
+        elo_scores.insert(1, 17.363306231498115);
+        elo_scores.insert(2, 21.291677238090045);
+        elo_scores.insert(3, 17.363306231498115);
+        elo_scores.insert(4, 25.0);
+        elo_scores.insert(5, 19.107443490112104);
+        elo_scores.insert(6, 25.0);
+        elo_scores.insert(7, 25.220048244681976);
+        elo_scores.insert(8, 25.220048244681976);
+        elo_scores.insert(9, 26.964185503295965);
+        elo_scores.insert(10, 25.0);
+        elo_scores.insert(12, 21.291677238090045);
+        elo_scores.insert(13, 23.035814496704035);
+        elo_scores.insert(14, 26.964185503295965);
+        elo_scores.insert(15, 19.107443490112104);
+        elo_scores.insert(16, 25.0);
+        elo_scores.insert(17, 25.0);
+
+        let participants_arc = Arc::new(participants);
+        let opt = solve_lp(participants_arc.clone(), elo_scores);
+
+        assert_solution_valid(opt.clone());
+
+        // Check partner preferences
+        let rooms = rooms_of_speaker_assignments(&opt);
+
+        // List of pairs with mutual preferences
+        let partner_pairs = vec![(1, 2), (3, 4), (8, 9), (14, 15)];
+
+        let mut partner_preferences_respected = true;
+        let mut unrespected_pairs = Vec::new();
+
+        for (person1, person2) in partner_pairs {
+            let mut found_together = false;
+
+            for room in rooms.values() {
+                for (_, members) in &room.teams {
+                    if members.contains(&person1) && members.contains(&person2)
+                    {
+                        found_together = true;
+                        break;
+                    }
+                }
+                if found_together {
+                    break;
+                }
+            }
+
+            if !found_together {
+                partner_preferences_respected = false;
+                unrespected_pairs.push((person1, person2));
+            }
+        }
+
+        assert!(
+            partner_preferences_respected,
+            "Partner preferences not respected for pairs: {:?}",
+            unrespected_pairs
+        );
     }
 
     fn assert_solution_valid(opt: HashMap<i64, Assignment>) {
