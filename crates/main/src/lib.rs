@@ -89,6 +89,7 @@ pub mod accounts;
 pub mod admin;
 pub mod auth;
 pub mod groups;
+pub mod home_page;
 pub mod html;
 pub mod model;
 pub mod permissions;
@@ -100,19 +101,6 @@ pub mod util;
 
 #[macro_use]
 extern crate rocket;
-
-#[get("/")]
-fn index(user: Option<User>, span: TracingSpan) -> maud::Markup {
-    let _guard = span.0.enter();
-    page_of_body(
-        maud::html! {
-            div {
-                p { "Welcome to the index page!" }
-            }
-        },
-        user,
-    )
-}
 
 #[get("/up")]
 /// This is necessary for deploying with Kamal, because it uses this URL to
@@ -323,7 +311,8 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
             routes![
                 login_with_password,
                 do_password_login,
-                index,
+                home_page::index,
+                home_page::how_it_works,
                 login_page,
                 do_login,
                 check_email_page,

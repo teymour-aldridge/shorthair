@@ -415,10 +415,10 @@ pub fn solve_lp(
     let mut problem = vars
         .maximise(
             // todo: work out what the right multipliers are
-            (-1 * judge_penalty)
-                + (-1 * difference_between_teams)
-                + 1 * (difference_between_speakers)
-                + (-5 * fewer_rooms_objective)
+            ((-2.0 * (r_max as f64) * 10.0) * judge_penalty)
+                + ((-1.0 * (r_max as f64) * 10.0) * difference_between_teams)
+                + (r_max as f64) * (difference_between_speakers)
+                + ((-1.0 * (r_max as f64) * 50.0) * fewer_rooms_objective)
                 + ((r_max as f64) * 20.0) * partner_preferences,
         )
         .using(good_lp::solvers::highs::highs);
@@ -751,7 +751,7 @@ mod test_allocations {
 
         assert_solution_valid(opt.clone());
 
-        let rooms = rooms_of_speaker_assignments(&opt);
+        let rooms = dbg!(rooms_of_speaker_assignments(&opt));
         assert_eq!(rooms.len(), 2, "error: {rooms:#?} \n opt: {opt:?}");
         let mut iter = rooms.iter();
         let room1 = iter.next().unwrap().1;
