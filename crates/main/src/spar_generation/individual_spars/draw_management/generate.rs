@@ -78,55 +78,77 @@ pub async fn generate_draw(
             let signups = {
                 let (signups1, signups2) = diesel::alias!(spar_signups as signups1, spar_signups as signups2);
 
-                let missing_signups =
-                    signups1
-                        .filter(signups1.field(spar_signups::spar_id).eq(spar.id))
-                        .filter(signups1.field(spar_signups::partner_preference).is_not_null())
-                        .filter(
-                            signups1.field(spar_signups::partner_preference).assume_not_null()
-                                .ne_all(
-                                    signups2.filter(signups2.field(spar_signups::spar_id).eq(spar.id))
-                                        .inner_join(spar_series_members::table.on(signups2.field(spar_signups::member_id).eq(spar_series_members::id)))
-                                        .filter(spar_series_members::id.eq(signups1.field(spar_signups::partner_preference).assume_not_null()))
-                                        .select(spar_series_members::id)
-                                )
-                        )
-                        .load::<SparSignup>(conn).unwrap();
+                let missing_signups = signups1
+                    .filter(signups1.field(spar_signups::spar_id).eq(spar.id))
+                    .filter(
+                        signups1
+                            .field(spar_signups::partner_preference)
+                            .is_not_null()
+                    )
+                    .filter(
+                        signups1
+                            .field(spar_signups::partner_preference)
+                            .assume_not_null()
+                            .ne_all(
+                                signups2
+                                    .filter(
+                                        signups2.field(spar_signups::spar_id).eq(spar.id)
+                                    )
+                                    .inner_join(
+                                        spar_series_members::table.on(
+                                            signups2
+                                                .field(spar_signups::member_id)
+                                                .eq(spar_series_members::id)
+                                        )
+                                    )
+                                    .filter(
+                                        spar_series_members::id.eq(
+                                            signups1
+                                                .field(spar_signups::partner_preference)
+                                                .assume_not_null()
+                                        )
+                                    )
+                                    .select(spar_series_members::id)
+                            )
+                    )
+                    .load::<SparSignup>(conn)
+                    .unwrap();
 
                 if !missing_signups.is_empty() {
                     let missing = missing_signups.iter().map(|signup| {
-                        let partner_name = spar_series_members::table.filter(spar_series_members::id.eq( signup.partner_preference.unwrap()))
+                        let partner_name = spar_series_members::table
+                            .filter(spar_series_members::id.eq(
+                                signup.partner_preference.unwrap()
+                            ))
                             .select(spar_series_members::name)
-                            .first::<String>(conn).unwrap();
+                            .first::<String>(conn)
+                            .unwrap();
 
-                        let own_name = spar_series_members::table.filter(spar_series_members::id.eq( signup.member_id))
+                        let own_name = spar_series_members::table
+                            .filter(spar_series_members::id.eq(signup.member_id))
                             .select(spar_series_members::name)
-                            .first::<String>(conn).unwrap();
-                        format!("{own_name} (preferred speaking partner {partner_name} has not signed up)")
+                            .first::<String>(conn)
+                            .unwrap();
+
+                        format!(
+                            "{own_name} (preferred speaking partner {partner_name} has not signed up)"
+                        )
                     }).join(", ");
 
                     return Ok(Some(Err(Ok(Flash::error(
                         Redirect::to(format!("/spars/{}", spar.public_id)),
-                        format!("Error: some speakers have selected preferred speaking
-                         partners who are not signed up for this spar!
-                         Missing: {missing}"),
+                        format!(
+                            "Error: some speakers have selected preferred speaking \
+                             partners who are not signed up for this spar! \
+                             Missing: {missing}"
+                        ),
                     )))));
                 }
 
-                let mut signups = spar_signups::table.filter(spar_signups::spar_id.eq(spar.id)).load::<SparSignup>(conn).unwrap();
-                let signups_for_search = signups.clone();
-
-                // when people sign up they select their preferred speaking
-                // partner (i.e. a `spar_series_members` row), however, for
-                // allocations we expect a `spar_signups` row. We therefore
-                // replace all the references to `spar_series_members` with
-                // `spar_signups`.
-                for signup in &mut signups {
-                    if let Some(partner_preference) = signup.partner_preference {
-                        let partner = signups_for_search.iter().find(|signup| signup.member_id == partner_preference).map(|signup| signup.member_id).expect("previous check for missing partners should have caught this");
-                        signup.partner_preference = Some(partner)
-                    }
-                }
+                let signups = spar_signups::table
+                    .filter(spar_signups::spar_id.eq(spar.id))
+                    .load::<SparSignup>(conn)
+                    .unwrap();
 
                 Arc::new(
                     signups.into_iter().map(|signup| {

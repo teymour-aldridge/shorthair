@@ -19,7 +19,7 @@ use auth::{
     logout,
     register::{do_register, register_page},
 };
-use db::{user::User, DbConn};
+use db::DbConn;
 use diesel_migrations::{
     embed_migrations, EmbeddedMigrations, MigrationHarness,
 };
@@ -41,7 +41,7 @@ use opentelemetry_semantic_conventions::{
     resource::{SERVICE_NAME, SERVICE_VERSION},
     SCHEMA_URL,
 };
-use request_ids::{RequestIdFairing, TracingSpan};
+use request_ids::RequestIdFairing;
 use rocket::{
     fairing::AdHoc,
     figment::{
