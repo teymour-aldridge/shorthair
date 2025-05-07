@@ -164,6 +164,7 @@ pub struct SparSignupSerializer {
     pub session_id: i64,
     pub as_judge: bool,
     pub as_speaker: bool,
+    pub partner_preference: Option<i64>,
 }
 
 impl SparSignupSerializer {
@@ -185,6 +186,7 @@ impl SparSignupSerializer {
             session_id: t.spar_id,
             as_judge: t.as_judge,
             as_speaker: t.as_speaker,
+            partner_preference: t.partner_preference,
         }
     }
 }

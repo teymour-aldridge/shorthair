@@ -1,7 +1,10 @@
 use db::{
     group::Group,
     room::SparRoomRepr,
-    schema::{groups, spar_rooms, spar_series, spar_signups, spars},
+    schema::{
+        groups, spar_rooms, spar_series, spar_series_members, spar_signups,
+        spars,
+    },
     spar::{Spar, SparRoom, SparSeries, SparSignup, SparSignupSerializer},
     user::User,
     DbConn,
@@ -213,6 +216,7 @@ pub async fn single_spar_overview_for_admin_page(
                                     th scope="col" { "User name" }
                                     th scope="col" { "As judge?" }
                                     th scope="col" { "As speaker?" }
+                                    th scope="col" { "Preferred speaking partner" }
                                 }
                             }
                             tbody {
@@ -221,12 +225,47 @@ pub async fn single_spar_overview_for_admin_page(
                                         th scope="row" { (i + 1) }
                                         // todo: restrict set of allowed usernames
                                         td { (signup.member.name) }
-                                        td class=(if signup.as_judge { "bg-success text-white" } else { "bg-danger text-white" }) {
+                                        td class=(if signup.as_judge { "bg-danger-subtle text-dark" } else { "text-dark" }) {
                                             (signup.as_judge)
                                         }
-                                        td class=(if signup.as_speaker { "bg-success text-white" } else { "bg-danger text-white" }) {
+                                        td class=(if signup.as_speaker { "bg-danger-subtle text-dark" } else { "text-dark" }) {
                                             (signup.as_speaker)
                                         }
+                                        (if let Some(pref) = signup.partner_preference {
+                                            let partner = signups.iter().find(|signup| {
+                                                signup.member.id == pref
+                                            });
+
+                                            match partner {
+                                                Some(partner) => {
+                                                    maud::html! {
+                                                        td {
+                                                            (partner.member.name)
+                                                        }
+                                                    }
+                                                },
+                                                None => {
+                                                    let name =
+                                                        spar_series_members::table
+                                                        .filter(spar_series_members::spar_series_id.eq(spar.spar_series_id))
+                                                        .filter(spar_series_members::id.eq(pref))
+                                                        .select(spar_series_members::name)
+                                                        .first::<String>(conn).unwrap();
+
+                                                    maud::html! {
+                                                        td class="bg-danger-subtle text-dark" {
+                                                            (format!("{} (not signed up)", name))
+                                                        }
+                                                    }
+                                                },
+                                            }
+                                        } else {
+                                            maud::html! {
+                                                td {
+
+                                                }
+                                            }
+                                        })
                                     }
                                 }
                             }

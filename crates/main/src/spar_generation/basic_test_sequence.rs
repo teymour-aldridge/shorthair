@@ -257,7 +257,7 @@ fn basic_test_sequence() {
             };
         rocket
             .post(format!(
-                "/spars/{}/reg/{}",
+                "/spars/{}/signup/{}",
                 spar.public_id, member.public_id
             ))
             .header(ContentType::Form)
@@ -480,7 +480,7 @@ fn basic_test_sequence() {
             };
         rocket
             .post(format!(
-                "/spars/{}/reg/{}",
+                "/spars/{}/signup/{}",
                 spar.public_id, member.public_id
             ))
             .header(ContentType::Form)

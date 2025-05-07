@@ -1237,7 +1237,7 @@ impl State {
                     {
                         self.client
                             .post(format!(
-                                "/spars/{}/reg/{}",
+                                "/spars/{}/signup/{}",
                                 spar.public_id, member.public_id
                             ))
                             .header(ContentType::Form)

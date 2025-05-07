@@ -213,7 +213,7 @@ pub async fn do_spar_signup_search(
                                 tr {
                                     td { (member.name) }
                                     td {
-                                        a href={"/spars/" (spar_id) "/reg/" (member.public_id)} {
+                                        a href={"/spars/" (spar_id) "/signup/" (member.public_id)} {
                                             "Register"
                                         }
                                     }
@@ -232,7 +232,7 @@ pub async fn do_spar_signup_search(
     .await
 }
 
-#[get("/spars/<spar_id>/reg/<member_id>")]
+#[get("/spars/<spar_id>/signup/<member_id>")]
 pub async fn register_for_spar_page(
     db: DbConn,
     spar_id: String,
@@ -383,7 +383,7 @@ pub struct SignupForSpar {
     pub speaking_partner: Option<Uuid>,
 }
 
-#[post("/spars/<spar_id>/reg/<member_id>", data = "<form>")]
+#[post("/spars/<spar_id>/signup/<member_id>", data = "<form>")]
 pub async fn do_register_for_spar(
     db: DbConn,
     spar_id: String,
@@ -433,6 +433,18 @@ pub async fn do_register_for_spar(
             let speaking_partner_id = if let Some(partner) =
                 form.speaking_partner
             {
+                if !form.as_speaker {
+                    return Ok(page_of_body(maud::html! {
+                        div class="alert alert-danger" role="alert" {
+                            "You have selected a preferred speaking partner, but
+                            only signed up to judge in this spar. Please return
+                            to the previous page, and either sign up as a
+                            speaker, or remove your preferred speaking partner."
+                        }
+
+                    }, user))
+                }
+
                 match spar_series_members::table
                     .filter(
                         spar_series_members::public_id.eq(partner.to_string()),

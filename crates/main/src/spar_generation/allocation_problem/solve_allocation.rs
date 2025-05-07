@@ -430,7 +430,7 @@ pub fn solve_lp(
 
     tracing::trace!("Constructed problem, now starting to solve problem");
 
-    let solution = problem.set_mip_rel_gap(0.012).unwrap().solve().unwrap();
+    let solution = problem.set_mip_rel_gap(0.05).unwrap().solve().unwrap();
 
     tracing::trace!("Solved problem!");
 
