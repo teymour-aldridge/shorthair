@@ -20,7 +20,7 @@ COPY . .
 
 RUN cargo +nightly build --release --bin main
 
-FROM debian:bookworm-slim AS runtime
+FROM ubuntu:noble AS runtime
 WORKDIR /app
 COPY --from=builder /app/target/release/main /usr/local/bin
 COPY --from=builder /app/entrypoint.sh /app/entrypoint.sh
