@@ -96,7 +96,6 @@ pub mod permissions;
 pub mod request_ids;
 pub mod resources;
 pub mod spar_generation;
-pub mod tests;
 pub mod util;
 
 #[macro_use]
