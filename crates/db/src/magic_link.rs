@@ -5,6 +5,7 @@ use diesel::{prelude::*, sql_types::Bool, sqlite::Sqlite};
 use crate::schema::magic_links;
 
 #[derive(Debug, Queryable, Arbitrary)]
+/// Magic links used for logging in via email.
 pub struct MagicLink {
     pub id: i64,
     pub code: String,
@@ -15,7 +16,6 @@ pub struct MagicLink {
 }
 
 impl MagicLink {
-    #[tracing::instrument(name = "MagicLink::valid_with_code")]
     pub fn valid_with_code<'a>(
         code: &'a str,
     ) -> Box<

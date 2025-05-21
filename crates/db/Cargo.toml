@@ -21,6 +21,7 @@ diesel-tracing = { version = "0.3.1", features = [
     "statement-fields",
 ] }
 tracing = "0.1.41"
+chumsky = "0.10.1"
 
 [dependencies.rocket]
 version = "0.5.1"

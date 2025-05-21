@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use db::{
+    draft_draw::{DraftDrawData, DraftDrawRoom},
     schema::{
         draft_draws, spar_series, spar_series_members, spar_signups, spars,
     },
@@ -24,7 +25,9 @@ use crate::{
     resources::GroupRef,
     spar_generation::allocation_problem::{
         ratings::compute_scores,
-        solve_allocation::{rooms_of_speaker_assignments, solve_lp},
+        solve_allocation::{
+            rooms_of_speaker_assignments, solve_lp, SolverRoom,
+        },
     },
 };
 
@@ -223,7 +226,8 @@ pub async fn generate_draw(
         tracing::info_span!("generating draw");
         let rooms = {
             let params = solve_lp(signups.clone(), elo_scores);
-            rooms_of_speaker_assignments(&params)
+            let solver_rooms = rooms_of_speaker_assignments(&params);
+            solver_room_to_draft_draw(solver_rooms)
         };
 
         let insertion_span = tracing::trace_span!("inserting generated draw");
@@ -263,4 +267,22 @@ pub async fn generate_draw(
         )),
         "Draw generation now in progress!",
     )));
+}
+
+pub fn solver_room_to_draft_draw(
+    t: HashMap<usize, SolverRoom>,
+) -> DraftDrawData {
+    let mut data = DraftDrawData {
+        rooms: t
+            .into_iter()
+            .sorted_by_key(|(k, _)| *k)
+            .map(|k| DraftDrawRoom {
+                panel: k.1.panel,
+                teams: k.1.teams,
+            })
+            .collect(),
+        id_map: HashMap::new(),
+    };
+    data.generate_map();
+    data
 }

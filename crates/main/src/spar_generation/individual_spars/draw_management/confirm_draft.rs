@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::{TimeDelta, Utc};
 use db::{
-    draft_draw::DraftDraw,
+    draft_draw::{DraftDraw, DraftDrawData, Team},
     schema::{
         draft_draws, spar_adjudicator_ballot_links, spar_adjudicators,
         spar_rooms, spar_series, spar_series_members, spar_signups,
@@ -29,10 +29,7 @@ use crate::{
     permissions::{has_permission, Permission},
     request_ids::TracingSpan,
     resources::GroupRef,
-    spar_generation::{
-        allocation_problem::solve_allocation::{SolverRoom, Team},
-        individual_spars::draw_management::draft_management::render_draw_data,
-    },
+    spar_generation::individual_spars::draw_management::draft_management::render_draw_data,
 };
 
 #[get("/spars/<spar_id>/draws/<draw_id>/confirm")]
@@ -91,7 +88,7 @@ pub async fn confirm_draw_page(
                 None => return Ok(None),
             };
 
-            let data: HashMap<usize, SolverRoom> = match draw.data {
+            let data: DraftDrawData = match draw.data {
                 Some(data) => serde_json::from_str(&data).unwrap(),
                 None => return Ok(Some(page_of_body(maud::html! {
                     p {"Cannot confirm a draw for which there is no data (please wait for draw to generate, and then refresh)."}
@@ -109,7 +106,7 @@ pub async fn confirm_draw_page(
                     h3 {
                         "Would you like to confirm this draw?"
                     }
-                    (render_draw_data(data, conn))
+                    (render_draw_data(&data, conn))
 
                     @if let Ok(true) = preexisting_draw {
                         div .alert.alert-danger.mt-3 {
@@ -191,7 +188,7 @@ pub async fn do_confirm_draw(
                 None => return Ok(None),
             };
 
-            let data: HashMap<usize, SolverRoom> =
+            let data: DraftDrawData =
                 match draw.data {
                     Some(data) => serde_json::from_str(&data).unwrap(),
                     None => return Ok(Some(Flash::error(
@@ -215,7 +212,7 @@ pub async fn do_confirm_draw(
             .execute(conn)
             .unwrap();
 
-            for (_, room) in data {
+            for room in data.rooms {
                 let spar_room_id = diesel::insert_into(spar_rooms::table)
                     .values((
                         spar_rooms::public_id.eq(Uuid::now_v7().to_string()),

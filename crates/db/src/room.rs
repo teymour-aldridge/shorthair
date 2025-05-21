@@ -35,6 +35,10 @@ use crate::{
     Arbitrary,
     DefaultMutator,
 )]
+/// A room in a spar.
+///
+/// This will only ever store rooms that are confirmed. Draft draws are stored
+/// as a JSON string (as a column of [`crate::draft_draw::DraftDraw`]).
 pub struct SparRoom {
     pub id: i64,
     pub public_id: String,

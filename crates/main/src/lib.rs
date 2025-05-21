@@ -59,7 +59,7 @@ use spar_generation::{
         admin_overview::{set_is_open, single_spar_overview_for_admin_page},
         draw_management::{
             confirm_draft::{confirm_draw_page, do_confirm_draw},
-            draft_management::view_draft_draw,
+            draft_management::{do_edit_draw, view_draft_draw},
             edit::show_draw_to_admin_page,
             generate::generate_draw,
             release::do_release_draw,
@@ -372,7 +372,8 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 confirm_draw_page,
                 do_confirm_draw,
                 view_draft_draw,
-                generate_draw
+                generate_draw,
+                do_edit_draw
             ],
         )
         .attach(RequestIdFairing)

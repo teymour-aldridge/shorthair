@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use db::spar::SparSignup;
+use db::{draft_draw::Team, spar::SparSignup};
 use good_lp::{
     constraint, variables, Expression, Solution, SolverModel,
     VariableDefinition,
@@ -478,25 +478,6 @@ pub fn solve_lp(
     }
 
     params
-}
-
-#[derive(
-    Hash,
-    Eq,
-    PartialEq,
-    PartialOrd,
-    Ord,
-    Clone,
-    Copy,
-    Debug,
-    Serialize,
-    Deserialize,
-)]
-pub enum Team {
-    Og,
-    Oo,
-    Cg,
-    Co,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
