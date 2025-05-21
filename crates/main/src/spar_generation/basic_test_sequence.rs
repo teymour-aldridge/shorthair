@@ -291,29 +291,30 @@ fn basic_test_sequence() {
         .post(format!("/spars/{}/makedraw", spar.public_id))
         .dispatch();
 
-    let mut draft = draft_draws::table
+    let mut draft_of_room_1 = draft_draws::table
         .order_by(draft_draws::created_at.desc())
         .first::<DraftDraw>(&mut conn)
         .optional()
         .unwrap();
 
-    while draft.is_none()
-        || (draft.is_some() && draft.as_ref().unwrap().data.is_none())
+    while draft_of_room_1.is_none()
+        || (draft_of_room_1.is_some()
+            && draft_of_room_1.as_ref().unwrap().data.is_none())
     {
         std::thread::sleep(std::time::Duration::from_secs(1));
-        draft = draft_draws::table
+        draft_of_room_1 = draft_draws::table
             .order_by(draft_draws::created_at.desc())
             .first::<DraftDraw>(&mut conn)
             .optional()
             .unwrap();
     }
 
-    let draft = draft.unwrap();
+    let draft_of_room_1 = draft_of_room_1.unwrap();
 
     rocket
         .post(format!(
             "/spars/{}/draws/{}/confirm",
-            spar.public_id, draft.public_id
+            spar.public_id, draft_of_room_1.public_id
         ))
         .header(ContentType::Form)
         .dispatch();
@@ -501,6 +502,7 @@ fn basic_test_sequence() {
 
     let mut draft = draft_draws::table
         .order_by(draft_draws::created_at.desc())
+        .filter(draft_draws::id.ne(draft_of_room_1.id))
         .first::<DraftDraw>(&mut conn)
         .optional()
         .unwrap();
@@ -511,6 +513,7 @@ fn basic_test_sequence() {
         std::thread::sleep(std::time::Duration::from_secs(1));
         draft = draft_draws::table
             .order_by(draft_draws::created_at.desc())
+            .filter(draft_draws::id.ne(draft_of_room_1.id))
             .first::<DraftDraw>(&mut conn)
             .optional()
             .unwrap();
