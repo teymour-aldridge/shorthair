@@ -21,7 +21,7 @@ tasks:
   - test: |
       cd eldemite
       source "$HOME/.cargo/env"
-      cargo test
+      cargo test --workspace
   - install_docker: |
       curl -sSL https://get.docker.com/ | sh
   - deploy: |

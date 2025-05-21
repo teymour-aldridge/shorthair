@@ -161,7 +161,7 @@ impl DraftDrawData {
                     let (a_idx, a_loc) = new_draw.find_loc(a);
                     let (b_idx, b_loc) = new_draw.find_loc(b);
 
-                    if a_loc != b_loc {
+                    if (a_loc != b_loc) || (a_idx != b_idx) {
                         let a_set = new_draw
                             .get_team_or_panel_set_mut(a_idx, a_loc)
                             .unwrap();
