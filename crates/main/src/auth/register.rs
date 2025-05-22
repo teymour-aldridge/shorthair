@@ -49,30 +49,30 @@ pub async fn register_page(
 
 fn register_form(form: Option<&RegisterForm>, error: Option<&str>) -> Markup {
     let markup = maud::html! {
-        h1 {"register"}
+        h1 {"Register"}
         @if let Some(err) = error {
             div class="error" {
                 (err)
             }
         }
-        form method="post" {
-            div {
-                label for="username" { "Username" }
-                input type="text" id="username" name="username" value=(form.map(|f| f.username.clone()).unwrap_or_default());
+        form method="post" class="mt-4" {
+            div class="mb-3" {
+                label for="username" class="form-label" { "Username" }
+                input type="text" class="form-control" id="username" name="username" value=(form.map(|f| f.username.clone()).unwrap_or_default());
             }
-            div {
-                label for="email" { "Email" }
-                input type="email" id="email" name="email" value=(form.map(|f| f.email.clone()).unwrap_or_default());
+            div class="mb-3" {
+                label for="email" class="form-label" { "Email" }
+                input type="email" class="form-control" id="email" name="email" value=(form.map(|f| f.email.clone()).unwrap_or_default());
             }
-            div {
-                label for="password" { "Password" }
-                input type="password" id="password" name="password" value=(form.map(|f| f.password.clone()).unwrap_or_default());
+            div class="mb-3" {
+                label for="password" class="form-label" { "Password" }
+                input type="password" class="form-control" id="password" name="password" value=(form.map(|f| f.password.clone()).unwrap_or_default());
             }
-            div {
-                label for="password2" { "Confirm Password" }
-                input type="password" id="password2" name="password2" value=(form.map(|f| f.password2.clone()).unwrap_or_default());
+            div class="mb-3" {
+                label for="password2" class="form-label" { "Confirm Password" }
+                input type="password" class="form-control" id="password2" name="password2" value=(form.map(|f| f.password2.clone()).unwrap_or_default());
             }
-            button type="submit" { "Register" }
+            button type="submit" class="btn btn-primary" { "Register" }
         }
     };
     page_of_body(markup, None)
