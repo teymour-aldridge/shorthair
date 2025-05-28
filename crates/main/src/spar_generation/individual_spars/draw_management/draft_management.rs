@@ -21,6 +21,7 @@ use crate::{
     permissions::{has_permission, Permission},
     request_ids::TracingSpan,
     resources::GroupRef,
+    util::tx,
 };
 
 #[get("/spars/<spar_id>/draws/<draw_id>")]
@@ -31,77 +32,71 @@ pub async fn view_draft_draw(
     user: User,
     span: TracingSpan,
 ) -> Option<Markup> {
-    let span1 = span.0.clone();
-    let spar_id = spar_id.to_string();
     let draw_id = draw_id.to_string();
-    db.run(move |conn| {
-        let _guard = span1.enter();
-        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            let spar = match spars::table
-                .filter(spars::public_id.eq(&spar_id))
-                .first::<Spar>(conn)
-                .optional()
-                .unwrap()
-            {
-                Some(spar) => spar,
-                None => return Ok(None),
-            };
+    let spar_id = spar_id.to_string();
+    tx(span, db, move |conn| {
+        let spar = match spars::table
+            .filter(spars::public_id.eq(&spar_id))
+            .first::<Spar>(conn)
+            .optional()
+            .unwrap()
+        {
+            Some(spar) => spar,
+            None => return None,
+        };
 
-            let group_id = spar_series::table
-                .filter(spar_series::id.eq(spar.spar_series_id))
-                .select(spar_series::group_id)
-                .first::<i64>(conn)
-                .unwrap();
+        let group_id = spar_series::table
+            .filter(spar_series::id.eq(spar.spar_series_id))
+            .select(spar_series::group_id)
+            .first::<i64>(conn)
+            .unwrap();
 
-            let has_permission = has_permission(
-                Some(&user),
-                &Permission::ModifyResourceInGroup(GroupRef(group_id)),
-                conn,
-            );
+        let has_permission = has_permission(
+            Some(&user),
+            &Permission::ModifyResourceInGroup(GroupRef(group_id)),
+            conn,
+        );
 
-            if !has_permission {
-                // todo: could return 403 page
-                return Ok(None);
-            }
+        if !has_permission {
+            // todo: could return 403 page
+            return None;
+        }
 
-            let draw = match draft_draws::table
-                .filter(
-                    draft_draws::public_id
-                        .eq(&draw_id)
-                        .and(draft_draws::spar_id.eq(spar.id)),
-                )
-                .first::<DraftDraw>(conn)
-                .optional()
-                .unwrap()
-            {
-                Some(draw) => draw,
-                None => return Ok(None),
-            };
+        let draw = match draft_draws::table
+            .filter(
+                draft_draws::public_id
+                    .eq(&draw_id)
+                    .and(draft_draws::spar_id.eq(spar.id)),
+            )
+            .first::<DraftDraw>(conn)
+            .optional()
+            .unwrap()
+        {
+            Some(draw) => draw,
+            None => return None,
+        };
 
-            let other_draws_of_same_spar = draft_draws::table
-                .filter(draft_draws::spar_id.eq(spar.id))
-                .order_by(draft_draws::created_at.desc())
-                // todo: don't need to load all the data here
-                .load::<DraftDraw>(conn)
-                .unwrap();
+        let other_draws_of_same_spar = draft_draws::table
+            .filter(draft_draws::spar_id.eq(spar.id))
+            .order_by(draft_draws::created_at.desc())
+            // todo: don't need to load all the data here
+            .load::<DraftDraw>(conn)
+            .unwrap();
 
-            let draw_data = draw
-                .data
-                .as_ref()
-                .map(|draw| serde_json::from_str(&draw).unwrap());
+        let draw_data = draw
+            .data
+            .as_ref()
+            .map(|draw| serde_json::from_str(&draw).unwrap());
 
-            Ok(Some(render_draft_management_page(
-                &draw,
-                draw_data,
-                &other_draws_of_same_spar,
-                &spar,
-                user,
-                conn,
-            )))
-        })
-        .unwrap()
+        Some(render_draft_management_page(
+            &draw,
+            draw_data,
+            &other_draws_of_same_spar,
+            &spar,
+            user,
+            conn,
+        ))
     })
-    .instrument(span.0)
     .await
 }
 

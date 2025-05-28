@@ -3,16 +3,6 @@
 version = 4
 
 [[package]]
-name = "addr"
-version = "0.15.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a93b8a41dbe230ad5087cc721f8d41611de654542180586b315d9f4cf6b72bef"
-dependencies = [
- "psl",
- "psl-types",
-]
-
-[[package]]
 name = "addr2line"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1810,7 +1800,6 @@ dependencies = [
 name = "main"
 version = "0.1.0"
 dependencies = [
- "addr",
  "arbitrary",
  "argon2",
  "chrono",
@@ -1827,7 +1816,6 @@ dependencies = [
  "maud",
  "once_cell",
  "opentelemetry",
- "opentelemetry-appender-tracing",
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",
  "opentelemetry-stdout",
@@ -2126,18 +2114,6 @@ dependencies = [
  "pin-project-lite",
  "thiserror 2.0.12",
  "tracing",
-]
-
-[[package]]
-name = "opentelemetry-appender-tracing"
-version = "0.29.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e716f864eb23007bdd9dc4aec381e188a1cee28eecf22066772b5fd822b9727d"
-dependencies = [
- "opentelemetry",
- "tracing",
- "tracing-core",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2446,21 +2422,6 @@ dependencies = [
  "quote",
  "syn 2.0.100",
 ]
-
-[[package]]
-name = "psl"
-version = "2.1.100"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70295efe3fd3db60e81f452e2eacc407b4e6c2e1ff7f763424ae6e16105cee26"
-dependencies = [
- "psl-types",
-]
-
-[[package]]
-name = "psl-types"
-version = "2.0.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33cb294fe86a74cbcf50d4445b37da762029549ebeea341421c7c70370f86cac"
 
 [[package]]
 name = "psm"
