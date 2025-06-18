@@ -132,7 +132,6 @@ impl BallotRepr {
     ///
     /// Panics if the debate is not currently stored in the database in BP
     /// format.
-    #[tracing::instrument(name = "BallotRepr::bp_ranking")]
     pub fn bp_ranking(&self) -> Vec<BpTeam> {
         // todo: maybe return an option instead of asserting here?
         assert_eq!(self.scoresheet.teams.len(), 4);
