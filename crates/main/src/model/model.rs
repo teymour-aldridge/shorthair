@@ -662,7 +662,9 @@ impl State {
                 if let Some(user) = &self.active_user {
                     let mut group = group.clone();
                     if Group::validate_name(&group.name)
-                        && !self.groups.iter().any(|t| t.name == group.name)
+                        && !self.groups.iter().any(|t| {
+                            t.name == group.name || t.website == group.website
+                        })
                     {
                         let n = self.groups.len();
                         group.id = n as i64;
@@ -749,8 +751,13 @@ impl State {
                 if !(membership.is_admin || membership.is_superuser) {
                     return;
                 }
-                let all_previous_spars_complete =
-                    &self.spars.iter().all(|spar| spar.is_complete);
+                let all_previous_spars_complete = self
+                    .spars
+                    .iter()
+                    .filter(|spar| spar.spar_series_id as usize == series_idx)
+                    // use `fold` instead of `all` in order to ensure that
+                    // `[] -> true`
+                    .fold(true, |acc, next| acc && next.is_complete);
                 if !all_previous_spars_complete {
                     return;
                 }

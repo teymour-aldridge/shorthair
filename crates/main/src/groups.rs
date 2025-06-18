@@ -93,6 +93,16 @@ pub async fn do_create_group(
                 return Ok(Either::Left(page_of_body(markup, Some(user))));
             }
 
+            if select(exists(groups::table.filter(groups::website.eq(&group.website)))).get_result::<bool>(conn).unwrap() {
+                let markup = create_group_form(Some(
+                    "Error: a different group with that website exists. (Note: a
+                        website can only be used by a single group!)"
+                        .to_string(),
+                ));
+                return Ok(Either::Left(page_of_body(markup, Some(user))));
+
+            }
+
             let group_public_id = gen_uuid().to_string();
 
             let id = diesel::insert_into(groups::table)

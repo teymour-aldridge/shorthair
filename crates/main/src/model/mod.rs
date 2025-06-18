@@ -257,4 +257,135 @@ mod regressions {
         .unwrap();
         (runner)(&actions)
     }
+
+    #[test]
+    fn regression3() {
+        let runner = make_test_runner();
+        let actions = serde_json::from_str(
+            r#"
+            [
+              {
+                "Setup": {
+                  "id": -8721541264781336897,
+                  "public_id": "",
+                  "username": "UcIuf",
+                  "email": "r@ple.com",
+                  "email_verified": false,
+                  "password_hash": "person0",
+                  "created_at": "1974-07-22T10:28:52",
+                  "is_superuser": true,
+                  "may_create_resources": false
+                }
+              },
+              { "Login": 4 },
+              {
+                "CreateGroup": {
+                  "id": -6754041804169275553,
+                  "public_id": "",
+                  "name": "I@K.CX",
+                  "website": "+\u001cː|",
+                  "created_at": "1905-10-22T01:06:56"
+                }
+              },
+              {
+                "CreateGroup": {
+                  "id": -6754041804169275553,
+                  "public_id": "",
+                  "name": "Iuf",
+                  "website": "+\u001cː|",
+                  "created_at": "1905-10-22T01:06:56"
+                }
+              }
+            ]
+            "#,
+        )
+        .unwrap();
+        (runner)(&actions)
+    }
+
+    #[test]
+    fn regression4() {
+        let runner = make_test_runner();
+        let actions = serde_json::from_str(
+            r#"
+            [
+              {
+                "Setup": {
+                  "id": -8721541264781336897,
+                  "public_id": "Iuf",
+                  "username": "qUcIuf",
+                  "email": "user@example.com",
+                  "email_verified": false,
+                  "password_hash": "person21",
+                  "created_at": "1974-07-22T10:28:52",
+                  "is_superuser": true,
+                  "may_create_resources": false
+                }
+              },
+              { "Login": 4 },
+              {
+                "CreateGroup": {
+                  "id": -6754041804169275553,
+                  "public_id": "H",
+                  "name": "person77",
+                  "website": "+\u001cː|",
+                  "created_at": "1905-10-22T01:06:56"
+                }
+              },
+              {
+                "CreateSparSeries": {
+                  "id": 8456802816100193075,
+                  "public_id": "\u001c=\u0018_",
+                  "title": "person08",
+                  "description": null,
+                  "speakers_per_team": 3563706608828805121,
+                  "group_id": 7189249649865157095,
+                  "created_at": "2016-10-27T01:31:51",
+                  "allow_join_requests": true,
+                  "auto_approve_join_requests": false
+                }
+              },
+              {
+                "CreateSpar": {
+                  "id": -8354458756482984002,
+                  "public_id": "",
+                  "start_time": "1947-07-27T05:42:39",
+                  "is_open": false,
+                  "release_draw": false,
+                  "spar_series_id": 4913609151390805753,
+                  "is_complete": false,
+                  "created_at": "1913-11-28T03:32:46"
+                }
+              },
+              {
+                "CreateSparSeries": {
+                  "id": 4231715758590899287,
+                  "public_id": "m~N{\"z",
+                  "title": "Person Lastname7660",
+                  "description": null,
+                  "speakers_per_team": -4108937861228846482,
+                  "group_id": 8006756651933283363,
+                  "created_at": "1958-05-01T23:18:07",
+                  "allow_join_requests": true,
+                  "auto_approve_join_requests": true
+                }
+              },
+              {
+                "CreateSpar": {
+                  "id": -8354458756482984002,
+                  "public_id": "",
+                  "start_time": "1947-07-27T05:42:39",
+                  "is_open": false,
+                  "release_draw": false,
+                  "spar_series_id": 4913609151390805753,
+                  "is_complete": false,
+                  "created_at": "1913-11-28T03:32:46"
+                }
+              }
+            ]
+            "#,
+        )
+        .unwrap();
+        (runner)(&actions)
+    }
 }
