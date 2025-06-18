@@ -61,10 +61,7 @@ pub async fn do_mark_spar_complete(
         if !force {
             #[derive(Debug)]
             enum Problem {
-                // todo: fix whatever this is
-                #[allow(dead_code)]
                 MissingBallots { count: usize },
-                /// We never generated a draw!
                 NoSparStarted,
             }
 

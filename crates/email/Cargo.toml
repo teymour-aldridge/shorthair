@@ -5,10 +5,10 @@ edition = "2021"
 
 [dependencies]
 db = { path = "../db" }
-lettre = { version = "0.11.10", features = ["tokio1", "tokio1-native-tls"] }
+lettre = { version = "0.11.17", features = ["tokio1", "tokio1-native-tls"] }
 rocket = "0.5.1"
 tracing = "0.1.41"
-uuid = { version = "1.11.0", features = ["v7"] }
+uuid = { version = "1.17.0", features = ["v7"] }
 
 [dependencies.diesel]
 features = [
@@ -18,4 +18,4 @@ features = [
     "r2d2",
     "uuid",
 ]
-version = "2.2.0"
+version = "2.2.10"
