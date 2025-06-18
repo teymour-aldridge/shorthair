@@ -629,26 +629,34 @@ impl State {
     ) {
         match action {
             Action::Setup(user) => {
-                if self.users.is_empty() {
-                    if user.username.is_some()
-                        && User::validate_password(&user.password_hash)
-                        && User::validate_email(&user.email)
-                        && User::validate_username(
-                            user.username.as_ref().unwrap(),
-                        )
-                    {
-                        {
-                            let mut user = user.clone();
-                            // note: we want IDs to line up with the indices in the
-                            // relevant places
-                            user.id = 0;
-                            user.email_verified = false;
-                            user.is_superuser = true;
-                            user.public_id = last_id().unwrap().to_string();
-                            self.users.push(user);
-                        }
-                    }
+                if !self.users.is_empty() {
+                    return;
                 }
+
+                if user.username.is_none() {
+                    return;
+                }
+
+                if !User::validate_password(&user.password_hash) {
+                    return;
+                }
+
+                if !User::validate_email(&user.email) {
+                    return;
+                }
+
+                if !User::validate_username(user.username.as_ref().unwrap()) {
+                    return;
+                }
+
+                let mut user = user.clone();
+                // note: we want IDs to line up with the indices in the
+                // relevant places
+                user.id = 0;
+                user.email_verified = false;
+                user.is_superuser = true;
+                user.public_id = last_id().unwrap().to_string();
+                self.users.push(user);
             }
             Action::Login(user) => {
                 if !self.users.is_empty() {
@@ -659,29 +667,37 @@ impl State {
                 }
             }
             Action::CreateGroup(group) => {
-                if let Some(user) = &self.active_user {
-                    let mut group = group.clone();
-                    if Group::validate_name(&group.name)
-                        && !self.groups.iter().any(|t| {
-                            t.name == group.name
-                                || (group.website.is_some()
-                                    && group.website == t.website)
-                        })
-                    {
-                        let n = self.groups.len();
-                        group.id = n as i64;
-                        group.public_id = last_id().unwrap().to_string();
-                        self.groups.push(group);
-                        assert_eq!(self.groups[n].id as usize, n);
-                        self.group_members.insert(
-                            (user.id as usize, self.groups[n].clone()),
-                            GroupMembershipData {
-                                is_admin: true,
-                                is_superuser: true,
-                            },
-                        );
-                    }
+                if self.active_user.is_none() {
+                    return;
                 }
+
+                let user = self.active_user.as_ref().unwrap();
+                let mut group = group.clone();
+
+                if !Group::validate_name(&group.name) {
+                    return;
+                }
+
+                if self.groups.iter().any(|t| {
+                    t.name == group.name
+                        || (group.website.is_some()
+                            && group.website == t.website)
+                }) {
+                    return;
+                }
+
+                let n = self.groups.len();
+                group.id = n as i64;
+                group.public_id = last_id().unwrap().to_string();
+                self.groups.push(group);
+                assert_eq!(self.groups[n].id as usize, n);
+                self.group_members.insert(
+                    (user.id as usize, self.groups[n].clone()),
+                    GroupMembershipData {
+                        is_admin: true,
+                        is_superuser: true,
+                    },
+                );
             }
             Action::CreateSparSeries(spar_series) => {
                 let user = if let Some(user) = &self.active_user {
@@ -784,43 +800,47 @@ impl State {
                 let member_idx = (*member_idx)
                     .clamp(0, self.spar_series_members.len().saturating_sub(1));
 
-                if let Some(spar) = self.spars.get(spar_idx) {
-                    if let Some(member) =
-                        self.spar_series_members.get(member_idx)
-                    {
-                        if spar.is_open {
-                            assert!(
-                                !spar.release_draw,
-                                "error: draw should not be released if the spar
-                                 is open for signups. Note: spar = {spar:#?}",
-                            );
+                let spar = self.spars.get(spar_idx);
+                if spar.is_none() {
+                    return;
+                }
+                let spar = spar.unwrap();
 
-                            let signup_idx =
-                                self.spar_signups.iter().enumerate().find(
-                                    |(_, signup)| {
-                                        signup.member_id == member.id
-                                            && signup.spar_id == spar.id
-                                    },
-                                );
-                            match signup_idx {
-                                Some((idx, _)) => {
-                                    self.spar_signups[idx].as_judge = *as_judge;
-                                    self.spar_signups[idx].as_speaker =
-                                        *as_speaker;
-                                }
-                                None => self.spar_signups.push(SparSignup {
-                                    id: self.spar_signups.len() as i64,
-                                    public_id: last_id().unwrap().to_string(),
-                                    member_id: member.id,
-                                    spar_id: spar.id,
-                                    as_judge: *as_judge,
-                                    as_speaker: *as_speaker,
-                                    // todo: support this
-                                    partner_preference: None,
-                                }),
-                            }
-                        }
-                    }
+                let member = self.spar_series_members.get(member_idx);
+                if member.is_none() {
+                    return;
+                }
+                let member = member.unwrap();
+
+                if !spar.is_open {
+                    return;
+                }
+
+                assert!(
+                    !spar.release_draw,
+                    "error: draw should not be released if the spar is open for signups. Note: spar = {spar:#?}",
+                );
+
+                let signup_idx =
+                    self.spar_signups.iter().enumerate().find(|(_, signup)| {
+                        signup.member_id == member.id
+                            && signup.spar_id == spar.id
+                    });
+
+                if let Some((idx, _)) = signup_idx {
+                    self.spar_signups[idx].as_judge = *as_judge;
+                    self.spar_signups[idx].as_speaker = *as_speaker;
+                } else {
+                    self.spar_signups.push(SparSignup {
+                        id: self.spar_signups.len() as i64,
+                        public_id: last_id().unwrap().to_string(),
+                        member_id: member.id,
+                        spar_id: spar.id,
+                        as_judge: *as_judge,
+                        as_speaker: *as_speaker,
+                        // todo: support this
+                        partner_preference: None,
+                    });
                 }
             }
             Action::GenerateDraw(_spar) => self.sync(conn),
@@ -829,306 +849,227 @@ impl State {
                     (*adj_idx).clamp(0, self.adjs.len().saturating_sub(1));
                 let room_idx =
                     (*room_idx).clamp(0, self.rooms.len().saturating_sub(1));
-                if let Some(adj) = self.adjs.get(adj_idx) {
-                    if let Some(room) = self.rooms.get(room_idx) {
-                        let resolve_speaker = |idx: usize| {
-                            let idx = idx.clamp(
-                                0,
-                                self.speakers.len().saturating_sub(1),
-                            );
-                            self.speakers.get(idx)
-                        };
 
-                        let pm = resolve_speaker(ballot.pm).unwrap();
-                        let dpm = resolve_speaker(ballot.dpm).unwrap();
-                        let og = self
-                            .teams
-                            .iter()
-                            .find(|team| {
-                                team.room_id == room.id && team.position == 0
-                            })
-                            .unwrap();
+                let adj = match self.adjs.get(adj_idx) {
+                    Some(adj) => adj,
+                    None => return,
+                };
 
-                        let lo = resolve_speaker(ballot.lo).unwrap();
-                        let dlo = resolve_speaker(ballot.dlo).unwrap();
-                        let oo = self
-                            .teams
-                            .iter()
-                            .find(|team| {
-                                team.room_id == room.id && team.position == 1
-                            })
-                            .unwrap();
+                let room = match self.rooms.get(room_idx) {
+                    Some(room) => room,
+                    None => return,
+                };
 
-                        let mg = resolve_speaker(ballot.mg).unwrap();
-                        let gw = resolve_speaker(ballot.gw).unwrap();
-                        let cg = self
-                            .teams
-                            .iter()
-                            .find(|team| {
-                                team.room_id == room.id && team.position == 2
-                            })
-                            .unwrap();
+                let speaker_len = self.speakers.len().saturating_sub(1);
 
-                        let mo = resolve_speaker(ballot.mo).unwrap();
-                        let ow = resolve_speaker(ballot.ow).unwrap();
-                        let co = self
-                            .teams
-                            .iter()
-                            .find(|team| {
-                                team.room_id == room.id && team.position == 3
-                            })
-                            .unwrap();
+                let speaker_indices = [
+                    ballot.pm.clamp(0, speaker_len),
+                    ballot.dpm.clamp(0, speaker_len),
+                    ballot.lo.clamp(0, speaker_len),
+                    ballot.dlo.clamp(0, speaker_len),
+                    ballot.mg.clamp(0, speaker_len),
+                    ballot.gw.clamp(0, speaker_len),
+                    ballot.mo.clamp(0, speaker_len),
+                    ballot.ow.clamp(0, speaker_len),
+                ];
 
-                        let og_score = ballot.pm_score + ballot.dpm_score;
-                        let oo_score = ballot.lo_score + ballot.dlo_score;
-                        let cg_score = ballot.mg_score + ballot.gw_score;
-                        let co_score = ballot.mo_score + ballot.ow_score;
-                        let mut scores = HashSet::with_capacity(4);
-                        scores.insert(og_score);
-                        scores.insert(oo_score);
-                        scores.insert(cg_score);
-                        scores.insert(co_score);
-
-                        if (scores.len() == 4)
-                            && (mo.team_id == co.id && ow.team_id == co.id)
-                            && (mg.team_id == cg.id && gw.team_id == cg.id)
-                            && (lo.team_id == oo.id && dlo.team_id == oo.id)
-                            && (pm.team_id == og.id && dpm.team_id == og.id)
-                        {
-                            let ballot_id = self.ballots.len() as i64;
-                            self.ballots.push(AdjudicatorBallot {
-                                id: ballot_id,
-                                public_id: last_id().unwrap().to_string(),
-                                adjudicator_id: adj.id,
-                                room_id: room.id,
-                                created_at: Utc::now().naive_utc(),
-                            });
-
-                            self.ballot_entries.push(AdjudicatorBallotEntry {
-                                id: self.ballot_entries.len() as i64,
-                                public_id: Uuid::now_v7().to_string(),
-                                ballot_id,
-                                speaker_id: pm.id,
-                                team_id: self
-                                    .teams
-                                    .iter()
-                                    .find(|team| {
-                                        team.room_id == room.id
-                                            && team.position == 0
-                                    })
-                                    .unwrap()
-                                    .id,
-                                speak: ballot.pm_score,
-                                position: 0,
-                            });
-
-                            self.ballot_entries.push(AdjudicatorBallotEntry {
-                                id: self.ballot_entries.len() as i64,
-                                public_id: Uuid::now_v7().to_string(),
-                                ballot_id,
-                                speaker_id: dpm.id,
-                                team_id: self
-                                    .teams
-                                    .iter()
-                                    .find(|team| {
-                                        team.room_id == room.id
-                                            && team.position == 0
-                                    })
-                                    .unwrap()
-                                    .id,
-                                speak: ballot.dpm_score,
-                                position: 1,
-                            });
-
-                            self.ballot_entries.push(AdjudicatorBallotEntry {
-                                id: self.ballot_entries.len() as i64,
-                                public_id: Uuid::now_v7().to_string(),
-                                ballot_id,
-                                speaker_id: lo.id,
-                                team_id: self
-                                    .teams
-                                    .iter()
-                                    .find(|team| {
-                                        team.room_id == room.id
-                                            && team.position == 1
-                                    })
-                                    .unwrap()
-                                    .id,
-                                speak: ballot.lo_score,
-                                position: 0,
-                            });
-
-                            self.ballot_entries.push(AdjudicatorBallotEntry {
-                                id: self.ballot_entries.len() as i64,
-                                public_id: Uuid::now_v7().to_string(),
-                                ballot_id,
-                                speaker_id: dlo.id,
-                                team_id: self
-                                    .teams
-                                    .iter()
-                                    .find(|team| {
-                                        team.room_id == room.id
-                                            && team.position == 1
-                                    })
-                                    .unwrap()
-                                    .id,
-                                speak: ballot.dlo_score,
-                                position: 1,
-                            });
-
-                            self.ballot_entries.push(AdjudicatorBallotEntry {
-                                id: self.ballot_entries.len() as i64,
-                                public_id: Uuid::now_v7().to_string(),
-                                ballot_id,
-                                speaker_id: mg.id,
-                                team_id: self
-                                    .teams
-                                    .iter()
-                                    .find(|team| {
-                                        team.room_id == room.id
-                                            && team.position == 2
-                                    })
-                                    .unwrap()
-                                    .id,
-                                speak: ballot.mg_score,
-                                position: 0,
-                            });
-
-                            self.ballot_entries.push(AdjudicatorBallotEntry {
-                                id: self.ballot_entries.len() as i64,
-                                public_id: Uuid::now_v7().to_string(),
-                                ballot_id,
-                                speaker_id: gw.id,
-                                team_id: self
-                                    .teams
-                                    .iter()
-                                    .find(|team| {
-                                        team.room_id == room.id
-                                            && team.position == 2
-                                    })
-                                    .unwrap()
-                                    .id,
-                                speak: ballot.gw_score,
-                                position: 1,
-                            });
-
-                            self.ballot_entries.push(AdjudicatorBallotEntry {
-                                id: self.ballot_entries.len() as i64,
-                                public_id: Uuid::now_v7().to_string(),
-                                ballot_id,
-                                speaker_id: mo.id,
-                                team_id: self
-                                    .teams
-                                    .iter()
-                                    .find(|team| {
-                                        team.room_id == room.id
-                                            && team.position == 3
-                                    })
-                                    .unwrap()
-                                    .id,
-                                speak: ballot.mo_score,
-                                position: 0,
-                            });
-
-                            self.ballot_entries.push(AdjudicatorBallotEntry {
-                                id: self.ballot_entries.len() as i64,
-                                public_id: Uuid::now_v7().to_string(),
-                                ballot_id,
-                                speaker_id: ow.id,
-                                team_id: self
-                                    .teams
-                                    .iter()
-                                    .find(|team| {
-                                        team.room_id == room.id
-                                            && team.position == 3
-                                    })
-                                    .unwrap()
-                                    .id,
-                                speak: ballot.ow_score,
-                                position: 1,
-                            });
-                        }
+                let mut speakers = Vec::with_capacity(8);
+                for &idx in &speaker_indices {
+                    match self.speakers.get(idx) {
+                        Some(s) => speakers.push(s),
+                        None => return,
                     }
+                }
+
+                let [pm, dpm, lo, dlo, mg, gw, mo, ow] =
+                    <[&SparRoomTeamSpeaker; 8]>::try_from(speakers).unwrap();
+
+                let find_team = |position| {
+                    self.teams.iter().find(|team| {
+                        team.room_id == room.id && team.position == position
+                    })
+                };
+
+                let og = match find_team(0) {
+                    Some(t) => t,
+                    None => return,
+                };
+                let oo = match find_team(1) {
+                    Some(t) => t,
+                    None => return,
+                };
+                let cg = match find_team(2) {
+                    Some(t) => t,
+                    None => return,
+                };
+                let co = match find_team(3) {
+                    Some(t) => t,
+                    None => return,
+                };
+
+                let og_score = ballot.pm_score + ballot.dpm_score;
+                let oo_score = ballot.lo_score + ballot.dlo_score;
+                let cg_score = ballot.mg_score + ballot.gw_score;
+                let co_score = ballot.mo_score + ballot.ow_score;
+
+                let mut scores = HashSet::with_capacity(4);
+                scores.insert(og_score);
+                scores.insert(oo_score);
+                scores.insert(cg_score);
+                scores.insert(co_score);
+
+                if mo.team_id != co.id || ow.team_id != co.id {
+                    return;
+                }
+
+                if mg.team_id != cg.id || gw.team_id != cg.id {
+                    return;
+                }
+
+                if lo.team_id != oo.id || dlo.team_id != oo.id {
+                    return;
+                }
+
+                if pm.team_id != og.id || dpm.team_id != og.id {
+                    return;
+                }
+
+                let ballot_id = self.ballots.len() as i64;
+                self.ballots.push(AdjudicatorBallot {
+                    id: ballot_id,
+                    public_id: last_id().unwrap().to_string(),
+                    adjudicator_id: adj.id,
+                    room_id: room.id,
+                    created_at: Utc::now().naive_utc(),
+                });
+
+                let entries = [
+                    (pm, ballot.pm_score, og.id, 0),
+                    (dpm, ballot.dpm_score, og.id, 1),
+                    (lo, ballot.lo_score, oo.id, 0),
+                    (dlo, ballot.dlo_score, oo.id, 1),
+                    (mg, ballot.mg_score, cg.id, 0),
+                    (gw, ballot.gw_score, cg.id, 1),
+                    (mo, ballot.mo_score, co.id, 0),
+                    (ow, ballot.ow_score, co.id, 1),
+                ];
+
+                for (speaker, score, team_id, position) in entries {
+                    self.ballot_entries.push(AdjudicatorBallotEntry {
+                        id: self.ballot_entries.len() as i64,
+                        public_id: Uuid::now_v7().to_string(),
+                        ballot_id,
+                        speaker_id: speaker.id,
+                        team_id,
+                        speak: score,
+                        position,
+                    });
                 }
             }
             Action::AddMember(spar_series_member) => {
-                if User::validate_username(&spar_series_member.name)
-                    && User::validate_email(&spar_series_member.email)
+                if !User::validate_username(&spar_series_member.name)
+                    || !User::validate_email(&spar_series_member.email)
                 {
-                    if let Some(user) = &self.active_user {
-                        let spar_series =
-                            (spar_series_member.spar_series_id as usize).clamp(
-                                0,
-                                self.spar_series_members
-                                    .len()
-                                    .saturating_sub(1),
-                            );
-                        if let Some(spar_series) =
-                            self.spar_series.get(spar_series)
-                        {
-                            let group =
-                                &self.groups[spar_series.group_id as usize];
-                            if let Some(membership) = self
-                                .group_members
-                                .get(&(user.id as usize, group.clone()))
-                            {
-                                if membership.is_admin
-                                    || membership.is_superuser
-                                {
-                                    let mut member = spar_series_member.clone();
-                                    member.spar_series_id = spar_series.id;
-                                    member.id =
-                                        self.spar_series_members.len() as i64;
-                                    member.public_id =
-                                        last_id().unwrap().to_string();
-                                    self.spar_series_members.push(member);
-                                }
-                            }
-                        }
-                    }
+                    return;
                 }
+
+                let user = match &self.active_user {
+                    Some(u) => u,
+                    None => return,
+                };
+
+                let spar_series_idx = (spar_series_member.spar_series_id
+                    as usize)
+                    .clamp(0, self.spar_series_members.len().saturating_sub(1));
+                let spar_series = match self.spar_series.get(spar_series_idx) {
+                    Some(s) => s,
+                    None => return,
+                };
+
+                let group = &self.groups[spar_series.group_id as usize];
+
+                let membership = match self
+                    .group_members
+                    .get(&(user.id as usize, group.clone()))
+                {
+                    Some(m) => m,
+                    None => return,
+                };
+
+                if !membership.is_admin && !membership.is_superuser {
+                    return;
+                }
+
+                let mut member = spar_series_member.clone();
+                member.spar_series_id = spar_series.id;
+                member.id = self.spar_series_members.len() as i64;
+                member.public_id = last_id().unwrap().to_string();
+                self.spar_series_members.push(member);
             }
             Action::ReleaseDraw(spar_idx) => {
-                if let Some(user) = &self.active_user {
-                    let spar_idx = (*spar_idx)
-                        .clamp(0, self.spars.len().saturating_sub(1));
-                    if let Some(spar) = self.spars.get(spar_idx).clone() {
-                        let series =
-                            &self.spar_series[spar.spar_series_id as usize];
-                        let group = &self.groups[series.group_id as usize];
-
-                        if let Some(membership) = self
-                            .group_members
-                            .get(&(user.id as usize, group.clone()))
-                        {
-                            if membership.is_admin || membership.is_superuser {
-                                self.spars[spar_idx].release_draw = true;
-                                self.spars[spar_idx].is_open = false;
-                            }
-                        }
-                    }
+                let user_opt = &self.active_user;
+                if user_opt.is_none() {
+                    return;
                 }
+                let user = user_opt.as_ref().unwrap();
+
+                let spar_idx =
+                    (*spar_idx).clamp(0, self.spars.len().saturating_sub(1));
+                let spar_opt = self.spars.get(spar_idx).clone();
+                if spar_opt.is_none() {
+                    return;
+                }
+                let spar = spar_opt.unwrap();
+
+                let series = &self.spar_series[spar.spar_series_id as usize];
+                let group = &self.groups[series.group_id as usize];
+
+                let membership_opt =
+                    self.group_members.get(&(user.id as usize, group.clone()));
+                if membership_opt.is_none() {
+                    return;
+                }
+                let membership = membership_opt.unwrap();
+
+                if !(membership.is_admin || membership.is_superuser) {
+                    return;
+                }
+
+                self.spars[spar_idx].release_draw = true;
+                self.spars[spar_idx].is_open = false;
             }
             Action::SetSparIsOpen { spar, state } => {
-                if let Some(user) = &self.active_user {
-                    let spar_idx =
-                        (*spar).clamp(0, self.spars.len().saturating_sub(1));
-                    if let Some(spar) = self.spars.get(spar_idx) {
-                        let series =
-                            &self.spar_series[spar.spar_series_id as usize];
-                        let group = &self.groups[series.group_id as usize];
-                        if let Some(member) = self
-                            .group_members
-                            .get(&(user.id as usize, group.clone()))
-                        {
-                            if member.is_admin || member.is_superuser {
-                                self.spars[spar_idx].is_open = *state;
-                                if *state {
-                                    self.spars[spar_idx].release_draw = false;
-                                }
-                            }
-                        }
-                    }
+                if self.active_user.is_none() {
+                    return;
+                }
+
+                let user = self.active_user.as_ref().unwrap();
+                let spar_idx =
+                    (*spar).clamp(0, self.spars.len().saturating_sub(1));
+
+                let spar_opt = self.spars.get(spar_idx);
+                if spar_opt.is_none() {
+                    return;
+                }
+
+                let spar = spar_opt.unwrap();
+                let series = &self.spar_series[spar.spar_series_id as usize];
+                let group = &self.groups[series.group_id as usize];
+
+                let member_opt =
+                    self.group_members.get(&(user.id as usize, group.clone()));
+                if member_opt.is_none() {
+                    return;
+                }
+
+                let member = member_opt.unwrap();
+                if !member.is_admin && !member.is_superuser {
+                    return;
+                }
+
+                self.spars[spar_idx].is_open = *state;
+                if *state {
+                    self.spars[spar_idx].release_draw = false;
                 }
             }
         }
