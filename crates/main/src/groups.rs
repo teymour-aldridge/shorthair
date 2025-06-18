@@ -221,9 +221,7 @@ pub async fn create_new_spar_series_page(
                 .unwrap()
             {
                 Some(inst) => inst,
-                None => {
-                    return Ok(None)
-                }
+                None => return Ok(None),
             };
 
             let has_permission = has_permission(
@@ -236,39 +234,46 @@ pub async fn create_new_spar_series_page(
                 return Ok(Some(Err(Flash::error(
                     Redirect::to("/"),
                     "Error: you do not have permission to do that!",
-                ))))
+                ))));
             }
 
-
-            Ok(Some(Ok(page_of_body(html! {
-                h1 { "Create spar series" }
-                div class="alert alert-info" role="alert" {
-                    "Note: a spar series connects a number of spars together.
-                     When generating a draw for a new spar in the series, only
-                     data from previous spars"
-                     i {" in the same series "}
-                     "is used."
-                }
-                form method="POST" {
-                    div class="mb-3" {
-                        label for="title" class="form-label" {
-                            "Title"
-                        }
-                        input name="title" type="text" class="form-control" id="title" {}
-                    }
-                    div class="mb-3" {
-                        label for="description" class="form-label" {
-                            "Description"
-                        }
-                        textarea name="description" type="text" class="form-control" id="description" {}
-                    }
-                    button type="submit" class="btn btn-primary" { "Submit" }
-                }
-            }, Some(user)))))
-        }).unwrap()
+            Ok(Some(Ok(page_of_body(
+                make_new_spar_series_form(),
+                Some(user),
+            ))))
+        })
+        .unwrap()
     })
     .instrument(span.0)
     .await
+}
+
+fn make_new_spar_series_form() -> Markup {
+    html! {
+        h1 { "Create spar series" }
+        div class="alert alert-info" role="alert" {
+            "Note: a spar series connects a number of spars together.
+             When generating a draw for a new spar in the series, only
+             data from previous spars"
+             i {" in the same series "}
+             "is used."
+        }
+        form method="POST" {
+            div class="mb-3" {
+                label for="title" class="form-label" {
+                    "Title"
+                }
+                input name="title" type="text" class="form-control" id="title" {}
+            }
+            div class="mb-3" {
+                label for="description" class="form-label" {
+                    "Description"
+                }
+                textarea name="description" type="text" class="form-control" id="description" {}
+            }
+            button type="submit" class="btn btn-primary" { "Submit" }
+        }
+    }
 }
 
 #[derive(FromForm, Serialize, Debug)]
@@ -308,6 +313,23 @@ pub async fn do_create_new_spar_series(
             }
 
             let public_id = gen_uuid().to_string();
+
+            let already_exists = select(exists(
+                spar_series::table
+                    .filter(spar_series::group_id.eq(group.id))
+                    .filter(spar_series::title.eq(&form.title)),
+            ))
+            .get_result::<bool>(conn)
+            .unwrap();
+
+            if already_exists {
+                return Ok(Some(Err(page_of_body(html! {
+                    div class="alert alert-danger" role="alert" {
+                        "Error: a spar series with that name already exists. Please pick a new name!"
+                    }
+                    (make_new_spar_series_form())
+                }, Some(user)))));
+            }
 
             let uuid = insert_into(spar_series::table)
                 .values((

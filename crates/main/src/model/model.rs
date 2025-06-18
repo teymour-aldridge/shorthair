@@ -680,31 +680,48 @@ impl State {
                 }
             }
             Action::CreateSparSeries(spar_series) => {
-                if let Some(user) = &self.active_user {
-                    let group_idx = (spar_series.group_id as usize)
-                        .clamp(0, self.groups.len().saturating_sub(1));
-                    if let Some(group) = self.groups.get(group_idx) {
-                        if let Some(membership) = self
-                            .group_members
-                            .get(&(user.id as usize, group.clone()))
-                        {
-                            if membership.is_admin || membership.is_superuser {
-                                let spar_series_id = self.spar_series.len();
-                                let mut spar_series = spar_series.clone();
-                                spar_series.id = spar_series_id as i64;
-                                spar_series.group_id = group.id;
-                                spar_series.public_id =
-                                    last_id().unwrap().to_string();
-                                self.spar_series.push(spar_series);
-                                assert_eq!(
-                                    self.spar_series[spar_series_id].id
-                                        as usize,
-                                    spar_series_id
-                                );
-                            }
-                        }
-                    }
+                let user = if let Some(user) = &self.active_user {
+                    user
+                } else {
+                    return;
+                };
+
+                let group_idx = (spar_series.group_id as usize)
+                    .clamp(0, self.groups.len().saturating_sub(1));
+                let group = if let Some(group) = self.groups.get(group_idx) {
+                    group
+                } else {
+                    return;
+                };
+
+                let membership = if let Some(membership) =
+                    self.group_members.get(&(user.id as usize, group.clone()))
+                {
+                    membership
+                } else {
+                    return;
+                };
+
+                if !(membership.is_admin || membership.is_superuser) {
+                    return;
                 }
+
+                if self.spar_series.iter().any(|s| {
+                    s.group_id == group.id && s.title == spar_series.title
+                }) {
+                    return;
+                }
+
+                let spar_series_id = self.spar_series.len();
+                let mut spar_series = spar_series.clone();
+                spar_series.id = spar_series_id as i64;
+                spar_series.group_id = group.id;
+                spar_series.public_id = last_id().unwrap().to_string();
+                self.spar_series.push(spar_series);
+                assert_eq!(
+                    self.spar_series[spar_series_id].id as usize,
+                    spar_series_id
+                );
             }
             Action::CreateSpar(spar) => {
                 let user = match &self.active_user {
@@ -1026,27 +1043,35 @@ impl State {
                 }
             }
             Action::AddMember(spar_series_member) => {
-                if let Some(user) = &self.active_user {
-                    let spar_series =
-                        (spar_series_member.spar_series_id as usize).clamp(
-                            0,
-                            self.spar_series_members.len().saturating_sub(1),
-                        );
-                    if let Some(spar_series) = self.spar_series.get(spar_series)
-                    {
-                        let group = &self.groups[spar_series.group_id as usize];
-                        if let Some(membership) = self
-                            .group_members
-                            .get(&(user.id as usize, group.clone()))
+                if User::validate_username(&spar_series_member.name) {
+                    if let Some(user) = &self.active_user {
+                        let spar_series =
+                            (spar_series_member.spar_series_id as usize).clamp(
+                                0,
+                                self.spar_series_members
+                                    .len()
+                                    .saturating_sub(1),
+                            );
+                        if let Some(spar_series) =
+                            self.spar_series.get(spar_series)
                         {
-                            if membership.is_admin || membership.is_superuser {
-                                let mut member = spar_series_member.clone();
-                                member.spar_series_id = spar_series.id;
-                                member.id =
-                                    self.spar_series_members.len() as i64;
-                                member.public_id =
-                                    last_id().unwrap().to_string();
-                                self.spar_series_members.push(member);
+                            let group =
+                                &self.groups[spar_series.group_id as usize];
+                            if let Some(membership) = self
+                                .group_members
+                                .get(&(user.id as usize, group.clone()))
+                            {
+                                if membership.is_admin
+                                    || membership.is_superuser
+                                {
+                                    let mut member = spar_series_member.clone();
+                                    member.spar_series_id = spar_series.id;
+                                    member.id =
+                                        self.spar_series_members.len() as i64;
+                                    member.public_id =
+                                        last_id().unwrap().to_string();
+                                    self.spar_series_members.push(member);
+                                }
                             }
                         }
                     }
@@ -1361,7 +1386,7 @@ pub enum Action {
     /// then we do not log in.
     Login(
         #[field_mutator(
-            UsizeWithinRangeMutator = { usize_within_range_mutator(0..1000) }
+            UsizeWithinRangeMutator = { usize_within_range_mutator(0..10) }
         )]
         usize,
     ),
@@ -1377,16 +1402,21 @@ pub enum Action {
     CreateSpar(Spar),
     /// Release draw for a given spar.
     // todo: tests for draw editing
-    ReleaseDraw(usize),
+    ReleaseDraw(
+        #[field_mutator(
+            UsizeWithinRangeMutator = { usize_within_range_mutator(0..10) }
+        )]
+        usize,
+    ),
     /// Sign up for the nth spar. If no user is logged in, then this will do
     /// nothing.
     Signup {
         #[field_mutator(
-            UsizeWithinRangeMutator = { usize_within_range_mutator(0..1000) }
+            UsizeWithinRangeMutator = { usize_within_range_mutator(0..10) }
         )]
         member_idx: usize,
         #[field_mutator(
-            UsizeWithinRangeMutator = { usize_within_range_mutator(0..1000) }
+            UsizeWithinRangeMutator = { usize_within_range_mutator(0..10) }
         )]
         spar_idx: usize,
         as_judge: bool,
@@ -1396,16 +1426,21 @@ pub enum Action {
     /// both the server and the client here. We do assert that some necessary
     /// properties hold.
     #[field_mutator(
-        UsizeWithinRangeMutator = { usize_within_range_mutator(0..1000) }
+        UsizeWithinRangeMutator = { usize_within_range_mutator(0..10) }
     )]
-    GenerateDraw(usize),
+    GenerateDraw(
+        #[field_mutator(
+            UsizeWithinRangeMutator = { usize_within_range_mutator(0..10) }
+        )]
+        usize,
+    ),
     /// Submit a ballot in the nth room. Requires that the logged in user is
     /// allocated as a judge for that room.
     SubmitBallot(FuzzerBpBallotForm, usize, usize),
     SetSparIsOpen {
         // todo: weightedusizemutator which
         #[field_mutator(
-            UsizeWithinRangeMutator = { usize_within_range_mutator(0..1000) }
+            UsizeWithinRangeMutator = { usize_within_range_mutator(0..10) }
         )]
         spar: usize,
         state: bool,

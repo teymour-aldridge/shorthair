@@ -18,6 +18,7 @@ use diesel::{
 use maud::{html, Markup};
 use rocket::{
     form::Form,
+    http::Status,
     response::{status::Unauthorized, Redirect},
 };
 use serde::{Deserialize, Serialize};
@@ -377,11 +378,13 @@ pub struct AddMemberForm {
 
 #[post("/spar_series/<internal_id>/add_member", data = "<form>")]
 pub async fn do_add_member(
-    internal_id: String,
+    internal_id: &str,
     user: User,
     db: DbConn,
     form: Form<AddMemberForm>,
-) -> Markup {
+) -> (Status, Markup) {
+    let internal_id = internal_id.to_string();
+
     db.run(move |conn| {
         conn.transaction::<_, diesel::result::Error, _>(move |conn| {
             let (spar_series, group) = spar_series::table
@@ -393,18 +396,18 @@ pub async fn do_add_member(
             let user_is_admin = has_permission(Some(&user), &required_permission, conn);
 
             if !user_is_admin {
-                return Ok(error_403(
+                return Ok((Status::NotFound, error_403(
                     Some("Error: you are not authorized to administer this group.".to_string()),
                     Some(user)
-                ));
+                )));
             }
 
-            if form.name.len() < 3 {
-                return Ok(page_of_body(render_add_member_form(Some("Error: names must be at least 3 characters!"), Some(&form)), Some(user)));
+            if !User::validate_username(&form.name) {
+                return Ok((Status::BadRequest, page_of_body(render_add_member_form(Some("Error: names must be at least 3 characters!"), Some(&form)), Some(user))));
             }
 
             if !User::validate_email(&form.email) {
-                return Ok(page_of_body(render_add_member_form(Some("Error: the provided email is not valid!"), Some(&form)), Some(user)));
+                return Ok((Status::BadRequest, page_of_body(render_add_member_form(Some("Error: the provided email is not valid!"), Some(&form)), Some(user))));
             }
 
             let member_already_exists = {
@@ -420,13 +423,13 @@ pub async fn do_add_member(
             };
 
             if member_already_exists {
-                return Ok(page_of_body(
+                return Ok((Status::Conflict, page_of_body(
                     render_add_member_form(
                         Some("Error: A member with this name or email already exists in this spar series!".to_string()),
                         Some(&form)
                     ),
                     Some(user)
-                ));
+                )));
             }
 
             let n = insert_into(spar_series_members::table)
@@ -448,7 +451,7 @@ pub async fn do_add_member(
                 a href=(format!("/spar_series/{}", internal_id)) { "Return to spar series" }
             };
 
-            Ok(page_of_body(markup, Some(user)))
+            Ok((Status::Ok, page_of_body(markup, Some(user))))
         })
         .unwrap()
     })

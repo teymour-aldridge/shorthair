@@ -66,11 +66,11 @@ fn test_email() {
 }
 
 impl User {
-    pub fn with_public_id(pid: &str) -> WithPublicId {
+    pub fn with_public_id(pid: &str) -> WithPublicId<'_> {
         crate::schema::users::public_id.eq(pid)
     }
 
-    pub fn with_name(name: &str) -> WithName {
+    pub fn with_name(name: &str) -> WithName<'_> {
         crate::schema::users::username.eq(Some(name))
     }
 
