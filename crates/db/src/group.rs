@@ -47,7 +47,7 @@ impl Group {
     }
 
     pub fn validate_name(name: &str) -> bool {
-        name.chars().count() < 32
+        name.chars().count() < 32 && !name.is_empty()
     }
 }
 

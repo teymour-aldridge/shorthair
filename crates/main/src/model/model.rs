@@ -663,7 +663,9 @@ impl State {
                     let mut group = group.clone();
                     if Group::validate_name(&group.name)
                         && !self.groups.iter().any(|t| {
-                            t.name == group.name || t.website == group.website
+                            t.name == group.name
+                                || (group.website.is_some()
+                                    && group.website == t.website)
                         })
                     {
                         let n = self.groups.len();

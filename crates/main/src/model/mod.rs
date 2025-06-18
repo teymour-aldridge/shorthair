@@ -388,4 +388,49 @@ mod regressions {
         .unwrap();
         (runner)(&actions)
     }
+
+    #[test]
+    fn regression5() {
+        let runner = make_test_runner();
+        let actions = serde_json::from_str(
+            r#"
+            [
+              {
+                "Setup": {
+                  "id": -8721541264781336897,
+                  "public_id": "",
+                  "username": "UcIf",
+                  "email": "r@e.com",
+                  "email_verified": false,
+                  "password_hash": "person0",
+                  "created_at": "1974-07-22T10:28:52",
+                  "is_superuser": true,
+                  "may_create_resources": false
+                }
+              },
+              { "Login": 4 },
+              {
+                "CreateGroup": {
+                  "id": -5446776002496949009,
+                  "public_id": "",
+                  "name": "3",
+                  "website": null,
+                  "created_at": "2028-03-20T16:22:11"
+                }
+              },
+              {
+                "CreateGroup": {
+                  "id": -5446776002496949009,
+                  "public_id": "",
+                  "name": "y",
+                  "website": null,
+                  "created_at": "2028-03-20T16:22:11"
+                }
+              }
+            ]
+            "#,
+        )
+        .unwrap();
+        (runner)(&actions)
+    }
 }
