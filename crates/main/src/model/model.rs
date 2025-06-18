@@ -1052,7 +1052,9 @@ impl State {
                 }
             }
             Action::AddMember(spar_series_member) => {
-                if User::validate_username(&spar_series_member.name) {
+                if User::validate_username(&spar_series_member.name)
+                    && User::validate_email(&spar_series_member.email)
+                {
                     if let Some(user) = &self.active_user {
                         let spar_series =
                             (spar_series_member.spar_series_id as usize).clamp(

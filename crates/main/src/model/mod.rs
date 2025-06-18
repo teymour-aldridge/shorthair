@@ -433,4 +433,63 @@ mod regressions {
         .unwrap();
         (runner)(&actions)
     }
+
+    #[test]
+    fn regression6() {
+        let runner = make_test_runner();
+        let actions = serde_json::from_str(
+            r#"
+            [
+              {
+                "Setup": {
+                  "id": -8721541264781336897,
+                  "public_id": "",
+                  "username": "UcIf",
+                  "email": "r@e.com",
+                  "email_verified": false,
+                  "password_hash": "person0",
+                  "created_at": "1974-07-22T10:28:52",
+                  "is_superuser": true,
+                  "may_create_resources": false
+                }
+              },
+              { "Login": 4 },
+              {
+                "CreateGroup": {
+                  "id": -6754041804169275553,
+                  "public_id": "",
+                  "name": "perso1",
+                  "website": null,
+                  "created_at": "1905-10-22T01:06:56"
+                }
+              },
+              {
+                "CreateSparSeries": {
+                  "id": 8456802816100193075,
+                  "public_id": "",
+                  "title": "Iuf",
+                  "description": null,
+                  "speakers_per_team": 3563706608828805121,
+                  "group_id": 7189249649865157095,
+                  "created_at": "2016-10-27T01:31:51",
+                  "allow_join_requests": true,
+                  "auto_approve_join_requests": false
+                }
+              },
+              {
+                "AddMember": {
+                  "id": 100811447720902445,
+                  "public_id": "",
+                  "name": "WFMQ",
+                  "email": "2",
+                  "spar_series_id": -255521994796802598,
+                  "created_at": "1974-10-05T00:11:03"
+                }
+              }
+            ]
+            "#,
+        )
+        .unwrap();
+        (runner)(&actions)
+    }
 }
