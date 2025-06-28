@@ -18,4 +18,4 @@ features = [
     "r2d2",
     "uuid",
 ]
-version = "2.2.10"
+version = "2.2.11"
