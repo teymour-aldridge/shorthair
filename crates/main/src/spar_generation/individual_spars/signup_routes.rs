@@ -198,9 +198,7 @@ pub async fn do_spar_signup_search(
                              Please ask the spar administrator to enter your
                              name into the system."}
                     }
-
-
-                } else {
+                } @else {
                     table class="table" {
                         thead {
                             tr {
