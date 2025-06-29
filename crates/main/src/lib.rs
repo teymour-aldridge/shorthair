@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use crate::slides::{break_slides_page, do_gen_break_slides};
 use accounts::account_page;
 use admin::{
     config::{config_page, do_upsert_config, edit_existing_config_item_page},
@@ -20,9 +21,7 @@ use auth::{
     register::{do_register, register_page},
 };
 use db::DbConn;
-use diesel_migrations::{
-    embed_migrations, EmbeddedMigrations, MigrationHarness,
-};
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use groups::{
     create_group_page, create_new_spar_series_page, do_create_group,
     do_create_new_spar_series, view_group,
@@ -95,6 +94,7 @@ pub mod model;
 pub mod permissions;
 pub mod request_ids;
 pub mod resources;
+pub mod slides;
 pub mod spar_generation;
 pub mod util;
 
@@ -132,7 +132,7 @@ pub fn vendored_css() -> CssResponse {
 }
 
 pub const MIGRATIONS: EmbeddedMigrations =
-    embed_migrations!("../../migrations");
+    diesel_migrations::embed_migrations!("../../migrations");
 
 pub fn resource() -> Resource {
     Resource::builder()
@@ -372,7 +372,9 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                 do_confirm_draw,
                 view_draft_draw,
                 generate_draw,
-                do_edit_draw
+                do_edit_draw,
+                break_slides_page,
+                do_gen_break_slides
             ],
         )
         .attach(RequestIdFairing)

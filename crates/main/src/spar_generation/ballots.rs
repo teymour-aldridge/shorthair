@@ -299,7 +299,7 @@ fn render_ballot_form(
             }
             @if force_submit {
                 input type="checkbox" name="force" hidden checked {}
-            } else {
+            } @else {
                 input type="checkbox" name="force" hidden {}
             }
             button type="submit" class="btn btn-primary" {"Submit"}

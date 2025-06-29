@@ -7,11 +7,9 @@ edition = "2021"
 chrono = { version = "0.4.41", features = ["serde"] }
 rand = "0.8.5"
 rocket = { version = "0.5.1", features = ["uuid"] }
-db = { path = "../db" }
-email = { path = "../email" }
-diesel = { version = "2.2.11", features = ["chrono", "r2d2"] }
+diesel = { version = "2.2.10", features = ["chrono", "r2d2"] }
 uuid = { version = "1.17.0", features = ["v4", "v7"] }
-maud = { version = "0.26.0", features = ["rocket"] }
+maud = { version = "0.27.0", features = ["rocket"] }
 url = "2.5.4"
 either = "1.15.0"
 reqwest = "0.12.20"
@@ -30,20 +28,26 @@ diesel_migrations = "2.2.0"
 tempfile = "3.20.0"
 fuzzcheck = { git = "https://github.com/loiclec/fuzzcheck-rs" }
 parking_lot = "0.12.4"
-fuzzcheck-util = { version = "0.1.0", path = "../fuzzcheck-util" }
 skillratings = "0.27.1"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 sentry = "0.37.0"
 sentry-tracing = "0.37.0"
 tracing = "0.1.41"
+tracing-opentelemetry = "0.30.0"
 opentelemetry = { version = "0.29.1" }
 opentelemetry-otlp = { version = "0.29.0", features = ["grpc-tonic", "tonic"] }
 opentelemetry_sdk = { version = "0.29.0", features = ["rt-tokio"] }
-tracing-opentelemetry = "0.30.0"
 opentelemetry-semantic-conventions = { version = "0.29.0", features = [
     "semconv_experimental",
 ] }
 opentelemetry-stdout = "0.29.0"
+# local dependencies
+fuzzcheck-util = { version = "0.1.0", path = "../fuzzcheck-util" }
+db = { path = "../db" }
+email = { path = "../email" }
+ui = { version = "0.1.0", path = "../ui" }
+tabbycat-api = { git = "https://git.sr.ht/~teymour/tabbycat-api/", version = "0.1.0" }
+attohttpc = { version = "0.29.2", features = ["json"] }
 
 [dependencies.rocket_sync_db_pools]
 features = ["diesel_sqlite_pool"]
