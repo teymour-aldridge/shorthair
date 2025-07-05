@@ -1,0 +1,66 @@
+#import "@preview/polylux:0.4.0": *
+
+#set page(paper: "a4", flipped: true)
+#set text(size: 25pt, font: "Avenir")
+
+#let suffix(number) = [
+  #if number == 1 {
+    return "st"
+  } else if number == 2 {
+    return "nd"
+  } else if number == 3 {
+    return "rd"
+  } else {
+    return "th"
+  }
+]
+
+#let slides(ctx) = [
+  #slide[
+    #set align(horizon)
+
+    = Break slides
+    #ctx.tournament_name
+
+
+  ]
+
+  #for (name, breaking_teams) in ctx.categories {
+    slide[
+      #set align(horizon)
+
+      = #name break
+    ]
+
+    for breaking_team in breaking_teams {
+      slide[
+        #set align(horizon)
+
+        #if "break_rank" in breaking_team {
+          str("Breaking " + str(breaking_team.break_rank) + str(suffix(breaking_team.break_rank)))
+
+          uncover(2)[#heading(breaking_team.team.long_name)]
+
+          let first = true
+          for metric in breaking_team.metrics {
+            uncover(2)[
+              #if not first {
+                ", "
+              } else {
+                first = false;
+              }
+              #calc.round(metric.value, digits: 2)
+              #(str(metric.metric))
+            ];
+
+          }
+        } else {
+          breaking_team.remark
+          heading(breaking_team.team.long_name)
+        }
+      ]
+    }
+  }
+]
+
+#slides(json("break.json"))

@@ -14,3 +14,23 @@ tabbycat-api = { git = "https://git.sr.ht/~teymour/tabbycat-api/", version = "0.
 trace-request = { version = "0.1.0", path = "../trace-request" }
 tracing = "0.1.41"
 ui = { version = "0.1.0", path = "../ui" }
+
+# printing slides
+typst = "0.13"
+comemo = "0.4"
+
+# Fetching and unzipping packages
+zune-inflate = { version = "0.2", default-features = false, features = [
+    "gzip",
+    "std",
+] }
+tar = "0.4"
+ureq = "2.9"
+
+# utils
+time = "0.3"
+ttf-parser = "0.25"
+typst-kit = "0.13.1"
+typst-pdf = "0.13.1"
+typst-svg = "0.13.1"
+indexmap = "2.10.0"
