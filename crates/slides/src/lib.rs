@@ -68,7 +68,18 @@ fn make_form(
                                     value=(form_data.map(|f| f.tournament_slug.as_str()).unwrap_or("")) required;
                             }
                             div class="mb-3" {
-                                label for="template" class="form-label" { "Custom Typst Template (optional)" }
+                                label for="template" class="form-label" {
+                                    "Custom template (optional). If you don't provide
+                                     a template, then the default one will be used.
+                                     Templates must be written in the "
+                                     a href="https://typst.app" {"Typst"}
+                                     " language. "
+                                     "The "
+                                     a href="https://raw.githubusercontent.com/teymour-aldridge/shorthair/refs/heads/main/crates/slides/src/break_slides.typst" {
+                                        "source code of the default template"
+                                     }
+                                     " is available."
+                                }
                                 textarea class="form-control" id="template" name="template" rows="5" placeholder="Leave empty to use the default template" {
                                     (form_data.map(|f| f.template.clone().unwrap_or_default()).unwrap_or_default())
                                 }
