@@ -81,6 +81,10 @@ fn render_invite_form<T: ToString>(
                         }
                     }
                 })
+                div class="form-group mb-3" {
+                    label for="may_create_resources" class="form-label" { "Allow creating resources: " }
+                    input type="checkbox" id="may_create_resources" name="may_create_resources" class="form-check-input" checked;
+                }
             }
             input type="submit" value="Send Invite" class="btn btn-primary";
         }
@@ -90,6 +94,7 @@ fn render_invite_form<T: ToString>(
 #[derive(FromForm)]
 pub struct InviteUserForm {
     email: String,
+    may_create_resources: bool,
 }
 
 #[post("/admin/invite", data = "<invite>")]
@@ -156,6 +161,7 @@ pub async fn do_invite_user(
                     account_invites::email.eq(invite.email.trim().to_ascii_lowercase()),
                     account_invites::sent_by.eq(&user.id),
                     account_invites::created_at.eq(diesel::dsl::now),
+                    account_invites::may_create_resources.eq(invite.may_create_resources)
                 ))
                 // todo: warn when sending duplicate invites
                 .on_conflict_do_nothing()
@@ -340,7 +346,10 @@ pub async fn do_accept_invite(
                 return Ok(Err(error_403(Some("Error: that invite is not valid (it may have expired)."), user)));
             }
 
-            let invite = account_invites::table.filter(account_invites::code.eq(invite_code)).first::<AccountInvite>(conn).unwrap();
+            let invite = account_invites::table
+                .filter(account_invites::code.eq(invite_code))
+                .first::<AccountInvite>(conn)
+                .unwrap();
 
             if invite.email != form.email.to_ascii_lowercase().trim() {
                 tracing::trace!("Email on the invite database object ({}) doesn't match
@@ -408,7 +417,7 @@ pub async fn do_accept_invite(
                     users::created_at.eq(now),
                     users::password_hash.eq(&password_hash),
                     users::is_superuser.eq(false),
-                    users::may_create_resources.eq(true),
+                    users::may_create_resources.eq(invite.may_create_resources),
                 ))
                 .execute(conn)
                 .unwrap();

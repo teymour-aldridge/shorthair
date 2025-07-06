@@ -18,6 +18,7 @@ use rocket::{
 };
 use serde::Serialize;
 use tracing::Instrument;
+use ui::error_403;
 
 use crate::{
     model::sync::id::gen_uuid,
@@ -51,8 +52,17 @@ fn create_group_form(error: Option<String>) -> Markup {
 }
 
 #[get("/groups/new")]
-pub async fn create_group_page(user: User) -> Markup {
-    page_of_body(create_group_form(None), Some(user))
+pub async fn create_group_page(user: User, db: DbConn) -> Markup {
+    db.run(|conn| {
+        if !has_permission(Some(&user), &Permission::CreateNewGroup, conn) {
+            return error_403(
+                Some("Error: you do not have permission to create resources!"),
+                Some(user),
+            );
+        }
+        page_of_body(create_group_form(None), Some(user))
+    })
+    .await
 }
 
 #[derive(FromForm, Serialize)]
@@ -72,6 +82,15 @@ pub async fn do_create_group(
     db.run(move |conn| {
         let _guard = span1.enter();
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            if !has_permission(Some(&user), &Permission::CreateNewGroup, conn) {
+                let markup = create_group_form(Some(
+                    "You do not have permission to create resources. Please
+                     contact the group administrator."
+                        .to_string(),
+                ));
+                return Ok(Either::Left(page_of_body(markup, Some(user))));
+            }
+
             let name_taken = select(exists(groups::table.filter(groups::name.eq(&group.name))))
                 .get_result::<bool>(conn)
                 .unwrap();

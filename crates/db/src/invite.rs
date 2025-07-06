@@ -32,4 +32,5 @@ pub struct AccountInvite {
     pub sent_by: i64,
     #[field_mutator(NaiveDateTimeMutator = { naive_date_time_mutator() })]
     pub created_at: NaiveDateTime,
+    pub may_create_resources: bool,
 }

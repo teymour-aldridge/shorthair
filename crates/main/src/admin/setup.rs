@@ -47,9 +47,7 @@ fn setup_page_form(error: Option<String>) -> Markup {
 }
 
 #[get("/admin/setup")]
-/// Page to create the first user. This is here for convenience (it would also
-/// be possible to do so by manual access to the database, but this is
-/// always possible).
+/// Page to create the first user on a new instance.
 pub async fn setup_page(db: DbConn) -> Markup {
     db.run(|conn| {
         conn.transaction::<_, diesel::result::Error, _>(|conn| {

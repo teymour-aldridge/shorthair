@@ -8,6 +8,7 @@ diesel::table! {
         email -> Text,
         sent_by -> BigInt,
         created_at -> Timestamp,
+        may_create_resources -> Bool,
     }
 }
 
