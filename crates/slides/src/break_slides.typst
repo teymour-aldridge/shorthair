@@ -1,5 +1,7 @@
+// Get Polylux from the official package repository
 #import "@preview/polylux:0.4.0": *
 
+// Make the paper dimensions fit for a presentation and the text larger
 #set page(paper: "a4", flipped: true)
 #set text(size: 25pt, font: "Inter")
 
@@ -15,14 +17,37 @@
   }
 ]
 
+#let table-json(data) = {
+  let keys = data.at(0).keys()
+  text(
+    size:16pt,
+    table(
+      columns: (33.3%, 33.3%, 33.3%),
+      inset: (right: 1em, bottom: 1em),
+      stroke: none,
+      ..data.map(k => (k.name))
+    )
+  )
+
+}
+
 #let slides(ctx) = [
+  #slide[
+
+    #set align(horizon)
+
+    = #text(blue)[Break slides]
+    #ctx.tournament_name
+  ]
+
   #slide[
     #set align(horizon)
 
-    = Break slides
-    #ctx.tournament_name
+    = Adjudicator break
+  ]
 
-
+  #slide[
+    #table-json(ctx.adjudicators)
   ]
 
   #for (name, breaking_teams) in ctx.categories {

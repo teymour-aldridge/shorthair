@@ -9,7 +9,9 @@ use rocket::{
     http::{ContentType, Status},
 };
 use serde::{Deserialize, Serialize};
-use tabbycat_api::types::{TeamStandings, TeamStandingsMetricsItemMetric};
+use tabbycat_api::types::{
+    Adjudicator, TeamStandings, TeamStandingsMetricsItemMetric,
+};
 use tracing::Instrument;
 
 #[macro_use]
@@ -106,6 +108,7 @@ pub struct BreakSlidesForm {
 pub struct BreakSlidesCtx {
     tournament_name: String,
     categories: IndexMap<String, Vec<BreakingTeamCtx>>,
+    adjudicators: Vec<Adjudicator>,
 }
 
 #[derive(Serialize)]
@@ -207,6 +210,28 @@ pub async fn do_gen_break_slides(
                 }
             };
 
+        let mut adjudicators: Vec<tabbycat_api::types::Adjudicator> =
+            match attohttpc::get(format!(
+                "{api_addr}/api/v1/tournaments/{}/adjudicators",
+                form.tournament_slug
+            ))
+            .header("Authorization", format!("Token {}", form.api_key))
+            .send()
+            .and_then(|response| response.json::<Vec<Adjudicator>>())
+            {
+                Ok(judges) => judges.into_iter().filter(|judge| {
+                    judge.breaking.unwrap_or(false)
+                }).collect(),
+                Err(e) => {
+                    let error_msg = format!("Failed to fetch or decode team standings: {}. (Request ID: {})", e, req_id.to_string());
+                    return Err((Status::BadRequest, ui::page_of_body(make_form(Some(error_msg), Some(&form)), user)));
+                }
+            };
+
+        adjudicators.sort_by_key(|judge| {
+            judge.name.clone()
+        });
+
         let teams: HashMap<String, tabbycat_api::types::Team> =
             match attohttpc::get(format!(
                 "{api_addr}/api/v1/tournaments/{}/teams",
@@ -287,7 +312,7 @@ pub async fn do_gen_break_slides(
                 .collect()
         };
 
-        let ctx = BreakSlidesCtx { tournament_name: tournament.name.as_str().to_string(), categories: individual_break_categories };
+        let ctx = BreakSlidesCtx { tournament_name: tournament.name.as_str().to_string(), categories: individual_break_categories, adjudicators };
 
         let template = match &form.template {
             None => {
@@ -299,7 +324,8 @@ pub async fn do_gen_break_slides(
             Some(t) => t.to_string(),
         };
 
-        let world = TypstWrapperWorld::new(template).add_file("break.json", serde_json::to_string(&ctx).unwrap());
+        let json = serde_json::to_string(&ctx).unwrap();
+        let world = TypstWrapperWorld::new(template).add_file("break.json", json);
 
         // Render document
         let document = match typst::compile(&world)
