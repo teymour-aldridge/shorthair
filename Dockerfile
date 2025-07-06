@@ -1,6 +1,6 @@
 #!/bin/sh
 
-FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.88-trixie AS chef
 WORKDIR /app
 
 FROM chef AS planner
@@ -29,8 +29,11 @@ COPY --from=builder /app/run.sh /app/run.sh
 RUN chmod +x /app/entrypoint.sh
 ENV DOCKER=1
 
+# add Inter font
+RUN apt-get update -y
+RUN apt-get install -y fonts-inter fontconfig
 # Install litestream
-RUN apt-get update -y && apt-get install -y ca-certificates fuse3 sqlite3
+RUN apt-get install -y ca-certificates fuse3 sqlite3
 ADD https://github.com/benbjohnson/litestream/releases/download/v0.3.8/litestream-v0.3.8-linux-amd64-static.tar.gz /tmp/litestream.tar.gz
 RUN tar -C /usr/local/bin -xzf /tmp/litestream.tar.gz
 COPY --from=builder /app/litestream.yml /etc/litestream.yml

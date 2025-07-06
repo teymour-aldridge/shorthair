@@ -7,7 +7,7 @@ edition = "2021"
 arbitrary = { version = "1.4.1", features = ["derive"] }
 argon2 = "0.5.3"
 chrono = { version = "0.4.41", features = ["serde"] }
-diesel = { version = "2.2.10", features = ["chrono", "r2d2"] }
+diesel = { version = "2.2.11", features = ["chrono", "r2d2"] }
 diesel_migrations = "2.2.0"
 either = "1.15.0"
 fuzzcheck = { git = "https://github.com/loiclec/fuzzcheck-rs" }
@@ -27,7 +27,7 @@ parking_lot = "0.12.4"
 qrcode = "0.14.1"
 rand = "0.8.5"
 regex = "1.11.1"
-reqwest = "0.12.20"
+reqwest = "0.12.22"
 rocket = { version = "0.5.1", features = ["uuid"] }
 sentry = "0.37.0"
 sentry-tracing = "0.37.0"

@@ -302,9 +302,15 @@ pub async fn do_gen_break_slides(
         let world = TypstWrapperWorld::new(template).add_file("break.json", serde_json::to_string(&ctx).unwrap());
 
         // Render document
-        let document = typst::compile(&world)
-            .output
-            .expect("Error compiling typst");
+        let document = match typst::compile(&world)
+            .output {
+                Ok(doc) => doc,
+                Err(e) => {
+                    return Err((Status::BadRequest, ui::page_of_body(
+                        make_form(Some(format!("{:?}", e)), Some(&form)), user)
+                    ));
+                },
+            };
 
         let pdf = match typst_pdf::pdf(&document, &PdfOptions::default()) {
             Ok(pdf) => pdf,

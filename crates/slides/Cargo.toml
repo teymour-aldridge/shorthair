@@ -25,7 +25,7 @@ zune-inflate = { version = "0.2", default-features = false, features = [
     "std",
 ] }
 tar = "0.4"
-ureq = "2.9"
+ureq = "2.12"
 
 # utils
 time = "0.3"

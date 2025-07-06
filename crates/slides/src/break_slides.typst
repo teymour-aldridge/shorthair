@@ -1,7 +1,7 @@
 #import "@preview/polylux:0.4.0": *
 
 #set page(paper: "a4", flipped: true)
-#set text(size: 25pt, font: "Avenir")
+#set text(size: 25pt, font: "Inter")
 
 #let suffix(number) = [
   #if number == 1 {
