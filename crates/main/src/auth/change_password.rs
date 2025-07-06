@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use argon2::password_hash::PasswordHasher;
 use argon2::{password_hash::SaltString, Argon2};
 use argon2::{PasswordHash, PasswordVerifier};
 use db::{schema::users, user::User, DbConn};
 use diesel::prelude::*;
 use diesel::update;
+use email::send_mail;
 use maud::{html, Markup};
 use rand::rngs::OsRng;
 use rocket::{form::Form, response::Redirect};
@@ -59,8 +62,6 @@ pub struct SetPasswordForm {
 }
 
 /// Handles password updates for users.
-///
-/// TODO: send emails when this happens in case an account has been compromised
 #[post("/user/setpassword", data = "<form>")]
 pub async fn do_set_password(
     user: User,
@@ -69,63 +70,88 @@ pub async fn do_set_password(
     span: TracingSpan,
 ) -> Result<Markup, Redirect> {
     let span1 = span.0.clone();
-    db.run(move |conn| {
-        let _guard = span1.enter();
-        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            if form.password != form.password2 {
-                return Ok(Ok(auth_profile_page(
-                    Some(user),
-                    Some("Those passwords do not match!".to_string()),
-                )));
-            }
+    let db = Arc::new(db);
+    db.clone()
+        .run(move |conn| {
+            let _guard = span1.enter();
+            conn.transaction(|conn| -> Result<_, diesel::result::Error> {
+                if form.password != form.password2 {
+                    return Ok(Ok(auth_profile_page(
+                        Some(user),
+                        Some("Those passwords do not match!".to_string()),
+                    )));
+                }
 
-            let salt = SaltString::generate(&mut OsRng);
+                let salt = SaltString::generate(&mut OsRng);
 
-            let argon2 = Argon2::default();
-            let new_password_hash = argon2
-                .hash_password(form.password.as_bytes(), &salt)
-                .unwrap()
-                .to_string();
+                let argon2 = Argon2::default();
+                let new_password_hash = argon2
+                    .hash_password(form.password.as_bytes(), &salt)
+                    .unwrap()
+                    .to_string();
 
-            if form.old_password.is_none() {
-                return Ok(Ok(auth_profile_page(
-                    Some(user),
-                    Some(
-                        "You have not specified the old password.".to_string(),
-                    ),
-                )));
-            }
+                if form.old_password.is_none() {
+                    return Ok(Ok(auth_profile_page(
+                        Some(user),
+                        Some(
+                            "You have not specified the old password."
+                                .to_string(),
+                        ),
+                    )));
+                }
 
-            let pwdhash = &user.password_hash;
-            let old_password_matches = argon2
-                .verify_password(
-                    form.old_password.as_ref().unwrap().as_bytes(),
-                    &PasswordHash::new(&pwdhash).unwrap(),
-                )
-                .is_ok();
+                let pwdhash = &user.password_hash;
+                let old_password_matches = argon2
+                    .verify_password(
+                        form.old_password.as_ref().unwrap().as_bytes(),
+                        &PasswordHash::new(&pwdhash).unwrap(),
+                    )
+                    .is_ok();
 
-            if !old_password_matches {
-                return Ok(Ok(auth_profile_page(
-                    Some(user),
-                    Some(
-                        "The provided old password does not match your
+                if !old_password_matches {
+                    return Ok(Ok(auth_profile_page(
+                        Some(user),
+                        Some(
+                            "The provided old password does not match your
                                   actual, current, password."
-                            .to_string(),
-                    ),
-                )));
-            }
+                                .to_string(),
+                        ),
+                    )));
+                }
 
-            let n = update(users::table)
-                .filter(users::id.eq(user.id))
-                .set((users::password_hash.eq(new_password_hash),))
-                .execute(conn)
-                .unwrap();
-            assert_eq!(n, 1);
+                send_mail(
+                    vec![(
+                        &user.username.unwrap_or(user.email.clone()),
+                        &user.email,
+                    )],
+                    "Eldemite.net password change",
+                    &maud::html! {
+                        p {
+                            "Your password was just changed for eldemite.net. If
+                             this was not you, please email "
+                             a href="mailto:teymour@reasoning.page" {
+                                 "teymour@reasoning.page"
+                             }
+                             " as soon as possible."
+                        }
+                    }
+                    .into_string(),
+                    "Your password was just changed for eldemite.net. If \
+                 this was not you, please email teymour@reasoning.page.",
+                    db.clone(),
+                );
 
-            Ok(Err(Redirect::to("/profile/auth")))
+                let n = update(users::table)
+                    .filter(users::id.eq(user.id))
+                    .set((users::password_hash.eq(new_password_hash),))
+                    .execute(conn)
+                    .unwrap();
+                assert_eq!(n, 1);
+
+                Ok(Err(Redirect::to("/profile/auth")))
+            })
+            .unwrap()
         })
-        .unwrap()
-    })
-    .instrument(span.0)
-    .await
+        .instrument(span.0)
+        .await
 }
