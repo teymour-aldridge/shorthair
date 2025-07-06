@@ -27,7 +27,6 @@ parking_lot = "0.12.4"
 qrcode = "0.14.1"
 rand = "0.8.5"
 regex = "1.11.1"
-reqwest = "0.12.22"
 rocket = { version = "0.5.1", features = ["uuid"] }
 sentry = "0.37.0"
 sentry-tracing = "0.37.0"

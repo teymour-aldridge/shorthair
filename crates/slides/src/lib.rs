@@ -161,190 +161,528 @@ pub async fn do_gen_break_slides(
     span: TracingSpan,
     req_id: RequestId,
 ) -> Result<(ContentType, Vec<u8>), (Status, Markup)> {
-    let span1 = span.0.clone();
-    // todo: run the data fetching using async executor, rather than on a thread
-    rocket::tokio::task::spawn_blocking(move || {
-        let _guard = span1.enter();
-        let api_addr = form.url.clone();
+    let form_data = form.into_inner();
+    let api_addr = form_data.url.clone();
+    let api_key = form_data.api_key.clone();
+    let tournament_slug = form_data.tournament_slug.clone();
+    let template = form_data.template.clone();
+    let user_clone = user.clone();
 
-        let url = format!("{api_addr}/api/v1/tournaments/{}", form.tournament_slug);
-        let tournament = match attohttpc::get(&url)
-            .header("Authorization", format!("Token {}", form.api_key))
-            .send()
-        {
-            Err(e) => {
-                let error_msg = format!("Failed to retrieve the URL: {} (error: {e:?}). Please check
-                                         if the provided link to the tab site is
-                                         correct, and that the tournament is correct. (Request ID: {})", url, req_id.to_string());
-                return Err((Status::BadRequest, ui::page_of_body(make_form(Some(error_msg), Some(&form)), user)));
+    // Create reqwest client
+    let client = reqwest::Client::new();
+    let auth_header = format!("Token {}", api_key);
+
+    // Fetch tournament data
+    let url = format!("{api_addr}/api/v1/tournaments/{tournament_slug}");
+    let tournament_result = client
+        .get(&url)
+        .header("Authorization", &auth_header)
+        .send()
+        .await;
+
+    let tournament = match tournament_result {
+        Err(e) => {
+            let error_msg = format!("Failed to retrieve the URL: {} (error: {e:?}). Please check
+                                     if the provided link to the tab site is
+                                     correct, and that the tournament is correct. (Request ID: {})", url, req_id.to_string());
+            return Err((
+                Status::BadRequest,
+                ui::page_of_body(
+                    make_form(Some(error_msg), Some(&form_data)),
+                    user,
+                ),
+            ));
+        }
+        Ok(response) => {
+            if response.status() == reqwest::StatusCode::NOT_FOUND {
+                let error_msg = format!(
+                    "Tournament not found (404). URL: {url}. Please check if the tournament slug is correct. (Request ID: {})",
+                    req_id.to_string()
+                );
+                return Err((
+                    Status::BadRequest,
+                    ui::page_of_body(
+                        make_form(Some(error_msg), Some(&form_data)),
+                        user,
+                    ),
+                ));
             }
+            if !response.status().is_success() {
+                let error_msg = format!(
+                    "HTTP error {}: Please check your API key and tournament slug. (Request ID: {})",
+                    response.status(),
+                    req_id.to_string()
+                );
+                return Err((
+                    Status::BadRequest,
+                    ui::page_of_body(
+                        make_form(Some(error_msg), Some(&form_data)),
+                        user,
+                    ),
+                ));
+            }
+            match response.json::<tabbycat_api::types::Tournament>().await {
+                Ok(t) => t,
+                Err(e) => {
+                    let error_msg = format!(
+                        "Failed to decode tournament data: {}. (Request ID: {})",
+                        e,
+                        req_id.to_string()
+                    );
+                    return Err((
+                        Status::BadRequest,
+                        ui::page_of_body(
+                            make_form(Some(error_msg), Some(&form_data)),
+                            user,
+                        ),
+                    ));
+                }
+            }
+        }
+    };
+
+    // Fetch team standings
+    let standings_result = client
+        .get(format!(
+            "{api_addr}/api/v1/tournaments/{tournament_slug}/teams/standings"
+        ))
+        .header("Authorization", &auth_header)
+        .send()
+        .await;
+
+    let standings: HashMap<String, tabbycat_api::types::TeamStandings> =
+        match standings_result {
             Ok(response) => {
-                if response.status() == attohttpc::StatusCode::NOT_FOUND {
-                    let error_msg = format!("Tournament not found (404). URL: {url}. Please check if the tournament slug is correct. (Request ID: {})", req_id.to_string());
-                    return Err((Status::BadRequest, ui::page_of_body(make_form(Some(error_msg), Some(&form)), user)));
-                }
                 if !response.status().is_success() {
-                    let error_msg = format!("HTTP error {}: Please check your API key and tournament slug. (Request ID: {})", response.status(), req_id.to_string());
-                    return Err((Status::BadRequest, ui::page_of_body(make_form(Some(error_msg), Some(&form)), user)));
+                    let error_msg = format!(
+                        "HTTP error {}: Failed to fetch team standings. (Request ID: {})",
+                        response.status(),
+                        req_id.to_string()
+                    );
+                    return Err((
+                        Status::BadRequest,
+                        ui::page_of_body(
+                            make_form(Some(error_msg), Some(&form_data)),
+                            user,
+                        ),
+                    ));
                 }
-                response.json::<tabbycat_api::types::Tournament>().unwrap()
+                match response.json::<Vec<TeamStandings>>().await {
+                    Ok(standings_vec) => standings_vec
+                        .into_iter()
+                        .map(|standing| (standing.team.clone(), standing))
+                        .collect(),
+                    Err(e) => {
+                        let error_msg = format!(
+                            "Failed to decode team standings: {}. (Request ID: {})",
+                            e,
+                            req_id.to_string()
+                        );
+                        return Err((
+                            Status::BadRequest,
+                            ui::page_of_body(
+                                make_form(Some(error_msg), Some(&form_data)),
+                                user,
+                            ),
+                        ));
+                    }
+                }
+            }
+            Err(e) => {
+                let error_msg = format!(
+                    "Failed to fetch team standings: {}. (Request ID: {})",
+                    e,
+                    req_id.to_string()
+                );
+                return Err((
+                    Status::BadRequest,
+                    ui::page_of_body(
+                        make_form(Some(error_msg), Some(&form_data)),
+                        user,
+                    ),
+                ));
             }
         };
 
-        let standings: HashMap<String, tabbycat_api::types::TeamStandings> =
-            match attohttpc::get(format!(
-                "{api_addr}/api/v1/tournaments/{}/teams/standings",
-                form.tournament_slug
-            ))
-            .header("Authorization", format!("Token {}", form.api_key))
-            .send()
-            .and_then(|response| response.json::<Vec<TeamStandings>>())
-            {
-                Ok(standings_vec) => standings_vec
+    // Fetch adjudicators
+    let adjudicators_result = client
+        .get(format!(
+            "{api_addr}/api/v1/tournaments/{tournament_slug}/adjudicators"
+        ))
+        .header("Authorization", &auth_header)
+        .send()
+        .await;
+
+    let mut adjudicators: Vec<Adjudicator> = match adjudicators_result {
+        Ok(response) => {
+            if !response.status().is_success() {
+                let error_msg = format!(
+                    "HTTP error {}: Failed to fetch adjudicators. (Request ID: {})",
+                    response.status(),
+                    req_id.to_string()
+                );
+                return Err((
+                    Status::BadRequest,
+                    ui::page_of_body(
+                        make_form(Some(error_msg), Some(&form_data)),
+                        user,
+                    ),
+                ));
+            }
+            match response.json::<Vec<Adjudicator>>().await {
+                Ok(judges) => judges
                     .into_iter()
-                    .map(|standing| (standing.team.clone(), standing))
+                    .filter(|judge| judge.breaking.unwrap_or(false))
                     .collect(),
                 Err(e) => {
-                    let error_msg = format!("Failed to fetch or decode team standings: {}. (Request ID: {})", e, req_id.to_string());
-                    return Err((Status::BadRequest, ui::page_of_body(make_form(Some(error_msg), Some(&form)), user)));
+                    let error_msg = format!(
+                        "Failed to decode adjudicators: {}. (Request ID: {})",
+                        e,
+                        req_id.to_string()
+                    );
+                    return Err((
+                        Status::BadRequest,
+                        ui::page_of_body(
+                            make_form(Some(error_msg), Some(&form_data)),
+                            user,
+                        ),
+                    ));
                 }
-            };
+            }
+        }
+        Err(e) => {
+            let error_msg = format!(
+                "Failed to fetch adjudicators: {}. (Request ID: {})",
+                e,
+                req_id.to_string()
+            );
+            return Err((
+                Status::BadRequest,
+                ui::page_of_body(
+                    make_form(Some(error_msg), Some(&form_data)),
+                    user,
+                ),
+            ));
+        }
+    };
 
-        let mut adjudicators: Vec<tabbycat_api::types::Adjudicator> =
-            match attohttpc::get(format!(
-                "{api_addr}/api/v1/tournaments/{}/adjudicators",
-                form.tournament_slug
-            ))
-            .header("Authorization", format!("Token {}", form.api_key))
-            .send()
-            .and_then(|response| response.json::<Vec<Adjudicator>>())
-            {
-                Ok(judges) => judges.into_iter().filter(|judge| {
-                    judge.breaking.unwrap_or(false)
-                }).collect(),
-                Err(e) => {
-                    let error_msg = format!("Failed to fetch or decode team standings: {}. (Request ID: {})", e, req_id.to_string());
-                    return Err((Status::BadRequest, ui::page_of_body(make_form(Some(error_msg), Some(&form)), user)));
-                }
-            };
+    adjudicators.sort_by_key(|judge| judge.name.clone());
 
-        adjudicators.sort_by_key(|judge| {
-            judge.name.clone()
-        });
+    // Fetch teams
+    let teams_result = client
+        .get(format!(
+            "{api_addr}/api/v1/tournaments/{tournament_slug}/teams"
+        ))
+        .header("Authorization", &auth_header)
+        .send()
+        .await;
 
-        let teams: HashMap<String, tabbycat_api::types::Team> =
-            match attohttpc::get(format!(
-                "{api_addr}/api/v1/tournaments/{}/teams",
-                form.tournament_slug
-            ))
-            .header("Authorization", format!("Token {}", form.api_key))
-            .send()
-            .and_then(|response| response.json::<Vec<tabbycat_api::types::Team>>())
-            {
+    let teams: HashMap<String, tabbycat_api::types::Team> = match teams_result {
+        Ok(response) => {
+            if !response.status().is_success() {
+                let error_msg = format!(
+                    "HTTP error {}: Failed to fetch teams. (Request ID: {})",
+                    response.status(),
+                    req_id.to_string()
+                );
+                return Err((
+                    Status::BadRequest,
+                    ui::page_of_body(
+                        make_form(Some(error_msg), Some(&form_data)),
+                        user,
+                    ),
+                ));
+            }
+            match response.json::<Vec<tabbycat_api::types::Team>>().await {
                 Ok(teams_vec) => teams_vec
                     .into_iter()
                     .map(|team| (team.url.clone(), team))
                     .collect(),
                 Err(e) => {
-                    let error_msg = format!("Failed to fetch or decode teams: {}. (Request ID: {})", e, req_id.to_string());
-                    return Err((Status::BadRequest, ui::page_of_body(make_form(Some(error_msg), Some(&form)), user)));
+                    let error_msg = format!(
+                        "Failed to decode teams: {}. (Request ID: {})",
+                        e,
+                        req_id.to_string()
+                    );
+                    return Err((
+                        Status::BadRequest,
+                        ui::page_of_body(
+                            make_form(Some(error_msg), Some(&form_data)),
+                            user,
+                        ),
+                    ));
                 }
-            };
+            }
+        }
+        Err(e) => {
+            let error_msg = format!(
+                "Failed to fetch teams: {}. (Request ID: {})",
+                e,
+                req_id.to_string()
+            );
+            return Err((
+                Status::BadRequest,
+                ui::page_of_body(
+                    make_form(Some(error_msg), Some(&form_data)),
+                    user,
+                ),
+            ));
+        }
+    };
 
-        let mut break_categories: Vec<tabbycat_api::types::BreakCategory> =
-            attohttpc::get(format!(
-                "{api_addr}/api/v1/tournaments/{}/break-categories",
-                form.tournament_slug
-            ))
-            .header("Authorization", format!("Token {}", form.api_key))
+    // Fetch break categories
+    let break_categories_result = client
+        .get(format!(
+            "{api_addr}/api/v1/tournaments/{tournament_slug}/break-categories"
+        ))
+        .header("Authorization", &auth_header)
+        .send()
+        .await;
+
+    let mut break_categories = match break_categories_result {
+        Ok(response) => {
+            if !response.status().is_success() {
+                let error_msg = format!(
+                    "HTTP error {}: Failed to fetch break categories. (Request ID: {})",
+                    response.status(),
+                    req_id.to_string()
+                );
+                return Err((
+                    Status::BadRequest,
+                    ui::page_of_body(
+                        make_form(Some(error_msg), Some(&form_data)),
+                        user,
+                    ),
+                ));
+            }
+            match response
+                .json::<Vec<tabbycat_api::types::BreakCategory>>()
+                .await
+            {
+                Ok(categories) => categories,
+                Err(e) => {
+                    let error_msg = format!(
+                        "Failed to decode break categories: {}. (Request ID: {})",
+                        e,
+                        req_id.to_string()
+                    );
+                    return Err((
+                        Status::BadRequest,
+                        ui::page_of_body(
+                            make_form(Some(error_msg), Some(&form_data)),
+                            user,
+                        ),
+                    ));
+                }
+            }
+        }
+        Err(e) => {
+            let error_msg = format!(
+                "Failed to fetch break categories: {}. (Request ID: {})",
+                e,
+                req_id.to_string()
+            );
+            return Err((
+                Status::BadRequest,
+                ui::page_of_body(
+                    make_form(Some(error_msg), Some(&form_data)),
+                    user,
+                ),
+            ));
+        }
+    };
+
+    break_categories.sort_by_key(|cat| cat.priority);
+
+    // Fetch breaking teams for each category
+    let mut individual_break_categories = IndexMap::new();
+    for cat in &break_categories {
+        let breaking_teams_result = client
+            .get(&cat.links.breaking_teams)
+            .header("Authorization", &auth_header)
             .send()
-            .unwrap()
-            .json()
-            .unwrap();
+            .await;
 
-        break_categories.sort_by_key(|cat| cat.priority);
+        match breaking_teams_result {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    let error_msg = format!(
+                        "HTTP error {}: Failed to fetch breaking teams for category {}. (Request ID: {})",
+                        response.status(),
+                        cat.name.as_str(),
+                        req_id.to_string()
+                    );
+                    return Err((
+                        Status::BadRequest,
+                        ui::page_of_body(
+                            make_form(Some(error_msg), Some(&form_data)),
+                            user,
+                        ),
+                    ));
+                }
 
-        let individual_break_categories: IndexMap<String, Vec<BreakingTeamCtx>> = {
-            break_categories
-                .iter()
-                .map(|cat| {
-                    let response = attohttpc::get(&cat.links.breaking_teams)
-                        .header(
-                            "Authorization",
-                            format!("Token {}", form.api_key),
-                        )
-                        .send()
-                        .unwrap();
+                let response_text = match response.text().await {
+                    Ok(text) => text,
+                    Err(e) => {
+                        let error_msg = format!(
+                            "Failed to get response text for breaking teams: {}. (Request ID: {})",
+                            e,
+                            req_id.to_string()
+                        );
+                        return Err((
+                            Status::BadRequest,
+                            ui::page_of_body(
+                                make_form(Some(error_msg), Some(&form_data)),
+                                user,
+                            ),
+                        ));
+                    }
+                };
 
-                    let response_text = response.text().unwrap();
-                    let b = match serde_json::from_str::<Vec<CBreakingTeam>>(&response_text) {
-                        Ok(teams) => teams,
-                        Err(e) => {
-                            tracing::error!("Failed to deserialize breaking teams JSON: {}, data: {}", e, response_text);
-                            panic!("JSON deserialization failed");
-                        }
-                    };
+                let breaking_teams = match serde_json::from_str::<
+                    Vec<CBreakingTeam>,
+                >(&response_text)
+                {
+                    Ok(teams) => teams,
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to deserialize breaking teams JSON: {}, data: {}",
+                            e,
+                            response_text
+                        );
+                        let error_msg = format!(
+                            "Failed to deserialize breaking teams data. (Request ID: {})",
+                            req_id.to_string()
+                        );
+                        return Err((
+                            Status::BadRequest,
+                            ui::page_of_body(
+                                make_form(Some(error_msg), Some(&form_data)),
+                                user,
+                            ),
+                        ));
+                    }
+                };
 
-                    (
-                        cat.name.as_str().to_string(),
-                        b.into_iter().map(|breaking_team| {
-                            BreakingTeamCtx {
+                let breaking_team_contexts: Vec<BreakingTeamCtx> =
+                    breaking_teams
+                        .into_iter()
+                        .filter_map(|breaking_team| {
+                            let team = teams
+                                .values()
+                                .find(|cmp| cmp.url == breaking_team.team)?;
+                            let standings_data =
+                                standings.get(&breaking_team.team)?;
+
+                            Some(BreakingTeamCtx {
                                 break_rank: breaking_team.break_rank,
                                 rank: breaking_team.rank,
-                                remark: breaking_team.remark.map(|r| name_of_remark(&r)),
-                                team: teams.values().find(|cmp| cmp.url == breaking_team.team).expect("failed to find team").clone(),
-                                metrics: standings
-                                    .get(&breaking_team.team)
-                                    .unwrap()
+                                remark: breaking_team
+                                    .remark
+                                    .map(|r| name_of_remark(&r)),
+                                team: team.clone(),
+                                metrics: standings_data
                                     .metrics
                                     .iter()
-                                    .map(|metric| {
-                                        BreakingTeamMetricsCtx {
-                                            metric: name_of_metric(metric.metric.as_ref().unwrap()),
-                                            value: metric.value.unwrap(),
-                                        }
+                                    .filter_map(|metric| {
+                                        let metric_name =
+                                            metric.metric.as_ref()?;
+                                        let value = metric.value?;
+                                        Some(BreakingTeamMetricsCtx {
+                                            metric: name_of_metric(metric_name),
+                                            value,
+                                        })
                                     })
                                     .collect(),
-                            }
-                        }).collect()
-                    )
-                })
-                .collect()
-        };
+                            })
+                        })
+                        .collect();
 
-        let ctx = BreakSlidesCtx { tournament_name: tournament.name.as_str().to_string(), categories: individual_break_categories, adjudicators };
-
-        let template = match &form.template {
-            None => {
-                DEFAULT_TEMPLATE.to_string()
+                individual_break_categories.insert(
+                    cat.name.as_str().to_string(),
+                    breaking_team_contexts,
+                );
             }
-            Some(t) if t.trim().len() == 0 => {
-                DEFAULT_TEMPLATE.to_string()
+            Err(e) => {
+                let error_msg = format!(
+                    "Failed to fetch breaking teams for category {}: {}. (Request ID: {})",
+                    cat.name.as_str(),
+                    e,
+                    req_id.to_string()
+                );
+                return Err((
+                    Status::BadRequest,
+                    ui::page_of_body(
+                        make_form(Some(error_msg), Some(&form_data)),
+                        user,
+                    ),
+                ));
             }
-            Some(t) => t.to_string(),
-        };
+        }
+    }
 
-        let json = serde_json::to_string(&ctx).unwrap();
-        let world = TypstWrapperWorld::new(template).add_file("break.json", json);
+    let ctx = BreakSlidesCtx {
+        tournament_name: tournament.name.as_str().to_string(),
+        categories: individual_break_categories,
+        adjudicators,
+    };
+
+    // Use the template
+    let template_content = match &template {
+        None => DEFAULT_TEMPLATE.to_string(),
+        Some(t) if t.trim().is_empty() => DEFAULT_TEMPLATE.to_string(),
+        Some(t) => t.to_string(),
+    };
+
+    let json = match serde_json::to_string(&ctx) {
+        Ok(j) => j,
+        Err(e) => {
+            let error_msg = format!(
+                "Failed to serialize context data: {}. (Request ID: {})",
+                e,
+                req_id.to_string()
+            );
+            return Err((
+                Status::BadRequest,
+                ui::page_of_body(
+                    make_form(Some(error_msg), Some(&form_data)),
+                    user,
+                ),
+            ));
+        }
+    };
+
+    let span1 = span.0.clone();
+    rocket::tokio::task::spawn_blocking(move || {
+        let _guard = span1.enter();
+        let world = TypstWrapperWorld::new(template_content)
+            .add_file("break.json", json);
 
         // Render document
-        let document = match typst::compile(&world)
-            .output {
-                Ok(doc) => doc,
-                Err(e) => {
-                    return Err((Status::BadRequest, ui::page_of_body(
-                        make_form(Some(format!("{:?}", e)), Some(&form)), user)
-                    ));
-                },
-            };
+        let document = match typst::compile(&world).output {
+            Ok(doc) => doc,
+            Err(e) => {
+                return Err((
+                    Status::BadRequest,
+                    ui::page_of_body(
+                        make_form(Some(format!("{:?}", e)), Some(&form_data)),
+                        user_clone,
+                    ),
+                ));
+            }
+        };
 
         let pdf = match typst_pdf::pdf(&document, &PdfOptions::default()) {
             Ok(pdf) => pdf,
             Err(e) => {
-                return Err((Status::BadRequest, ui::page_of_body(
-                    make_form(Some(format!("{:?}", e)), Some(&form)), user)
+                return Err((
+                    Status::BadRequest,
+                    ui::page_of_body(
+                        make_form(Some(format!("{:?}", e)), Some(&form_data)),
+                        user_clone,
+                    ),
                 ));
-            },
+            }
         };
 
         Ok((ContentType::PDF, pdf))
