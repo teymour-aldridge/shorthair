@@ -70,6 +70,24 @@ fn make_form(
                                     value=(form_data.map(|f| f.tournament_slug.as_str()).unwrap_or("")) required;
                             }
                             div class="mb-3" {
+                                div class="form-check" {
+                                    label class="form-check-label" for="descending_order" {
+                                        "Generate from highest to lowest priority (usually this
+                                         means that ticking this box will generate slides
+                                         in the order Open -> ESL -> EFL
+                                         rather than the default EFL -> ESL -> Open, but
+                                         this depends on how you have configured the
+                                         priority of the different break categories on
+                                         Tabbycat)."
+                                    }
+                                    @if form_data.as_ref().map(|f| f.descending_order).unwrap_or(false) {
+                                        input class="form-check-input" type="checkbox" value="true" id="descending_order" name="descending_order" checked {}
+                                    } @else {
+                                        input class="form-check-input" type="checkbox" value="true" id="descending_order" name="descending_order" {}
+                                    }
+                                }
+                            }
+                            div class="mb-3" {
                                 label for="template" class="form-label" {
                                     "Custom template (optional). If you don't provide
                                      a template, then the default one will be used.
@@ -101,6 +119,7 @@ pub struct BreakSlidesForm {
     url: String,
     api_key: String,
     tournament_slug: String,
+    descending_order: bool,
     template: Option<String>,
 }
 
@@ -168,11 +187,9 @@ pub async fn do_gen_break_slides(
     let template = form_data.template.clone();
     let user_clone = user.clone();
 
-    // Create reqwest client
     let client = reqwest::Client::new();
     let auth_header = format!("Token {}", api_key);
 
-    // Fetch tournament data
     let url = format!("{api_addr}/api/v1/tournaments/{tournament_slug}");
     let tournament_result = client
         .get(&url)
@@ -241,7 +258,6 @@ pub async fn do_gen_break_slides(
         }
     };
 
-    // Fetch team standings
     let standings_result = client
         .get(format!(
             "{api_addr}/api/v1/tournaments/{tournament_slug}/teams/standings"
@@ -304,7 +320,6 @@ pub async fn do_gen_break_slides(
             }
         };
 
-    // Fetch adjudicators
     let adjudicators_result = client
         .get(format!(
             "{api_addr}/api/v1/tournaments/{tournament_slug}/adjudicators"
@@ -368,7 +383,6 @@ pub async fn do_gen_break_slides(
 
     adjudicators.sort_by_key(|judge| judge.name.clone());
 
-    // Fetch teams
     let teams_result = client
         .get(format!(
             "{api_addr}/api/v1/tournaments/{tournament_slug}/teams"
@@ -430,7 +444,6 @@ pub async fn do_gen_break_slides(
         }
     };
 
-    // Fetch break categories
     let break_categories_result = client
         .get(format!(
             "{api_addr}/api/v1/tournaments/{tournament_slug}/break-categories"
@@ -492,9 +505,12 @@ pub async fn do_gen_break_slides(
         }
     };
 
-    break_categories.sort_by_key(|cat| cat.priority);
+    if !form_data.descending_order {
+        break_categories.sort_by_key(|cat| cat.priority);
+    } else {
+        break_categories.sort_by_key(|cat| -cat.priority);
+    }
 
-    // Fetch breaking teams for each category
     let mut individual_break_categories = IndexMap::new();
     for cat in &break_categories {
         let breaking_teams_result = client
