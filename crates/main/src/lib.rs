@@ -265,6 +265,7 @@ pub fn make_rocket(default_db: &str) -> Rocket<Build> {
                     .add_directive("hyper=off".parse().unwrap())
                     .add_directive("opentelemetry_sdk=off".parse().unwrap())
                     .add_directive("reqwest=off".parse().unwrap())
+                    .add_directive("rustls=off".parse().unwrap())
                     .add_directive("opentelemetry-otlp=off".parse().unwrap())
             }))
             .init();

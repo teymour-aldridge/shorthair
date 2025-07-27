@@ -18,22 +18,24 @@
 ]
 
 #let table-json(data) = {
-  let keys = data.at(0).keys()
-  text(
-    size:16pt,
-    table(
-      columns: (33.3%, 33.3%, 33.3%),
-      inset: (right: 1em, bottom: 1em),
-      stroke: none,
-      ..data.map(k => (k.name))
+  if data.len() == 0 {
+    "No data"
+  } else {
+    let keys = data.at(0).keys()
+    text(
+      size:16pt,
+      table(
+        columns: (33.3%, 33.3%, 33.3%),
+        inset: (right: 1em, bottom: 1em),
+        stroke: none,
+        ..data.map(k => (k.name))
+      )
     )
-  )
-
+  }
 }
 
 #let slides(ctx) = [
   #slide[
-
     #set align(horizon)
 
     = #text(blue)[Break slides]
@@ -41,12 +43,8 @@
   ]
 
   #slide[
-    #set align(horizon)
-
     = Adjudicator break
-  ]
 
-  #slide[
     #table-json(ctx.adjudicators)
   ]
 
@@ -66,16 +64,15 @@
 
           uncover(2)[#heading(breaking_team.team.long_name)]
 
-          let first = true
-          for metric in breaking_team.metrics {
+          for (i, metric) in breaking_team.metrics.enumerate() {
             uncover(2)[
-              #if not first {
-                ", "
-              } else {
-                first = false;
-              }
               #calc.round(metric.value, digits: 2)
-              #(str(metric.metric))
+              #if i != breaking_team.metrics.len() - 1 {
+                metric.metric
+                ","
+              } else {
+                metric.metric
+              }
             ];
 
           }

@@ -722,45 +722,45 @@ fn name_of_remark(remark: &str) -> String {
 
 fn name_of_metric(metric: &TeamStandingsMetricsItemMetric) -> String {
     match metric {
-        TeamStandingsMetricsItemMetric::Points => "Points".to_string(),
-        TeamStandingsMetricsItemMetric::Wins => "Wins".to_string(),
+        TeamStandingsMetricsItemMetric::Points => "points".to_string(),
+        TeamStandingsMetricsItemMetric::Wins => "wins".to_string(),
         TeamStandingsMetricsItemMetric::SpeaksSum => {
-            "Speaker Points Sum".to_string()
+            "total speaker points".to_string()
         }
         TeamStandingsMetricsItemMetric::SpeaksAvg => {
-            "Speaker Points Average".to_string()
+            "speaker points average".to_string()
         }
         TeamStandingsMetricsItemMetric::SpeaksIndAvg => {
-            "Individual Speaker Points Average".to_string()
+            "individual speaker points average".to_string()
         }
         TeamStandingsMetricsItemMetric::SpeaksStddev => {
-            "Speaker Points Standard Deviation".to_string()
+            "speaker points standard deviation".to_string()
         }
         TeamStandingsMetricsItemMetric::DrawStrength => {
-            "Draw Strength".to_string()
+            "draw strength by wins".to_string()
         }
         TeamStandingsMetricsItemMetric::DrawStrengthSpeaks => {
-            "Draw Strength Speaker Points".to_string()
+            "draw strength speaker points".to_string()
         }
-        TeamStandingsMetricsItemMetric::MarginSum => "Margin Sum".to_string(),
+        TeamStandingsMetricsItemMetric::MarginSum => "margin sum".to_string(),
         TeamStandingsMetricsItemMetric::MarginAvg => {
-            "Margin Average".to_string()
+            "margin average".to_string()
         }
         TeamStandingsMetricsItemMetric::Npullups => {
-            "Number of Pullups".to_string()
+            "number of pullups".to_string()
         }
         TeamStandingsMetricsItemMetric::PullupDebates => {
-            "Pullup Debates".to_string()
+            "pullup debates".to_string()
         }
         TeamStandingsMetricsItemMetric::NumAdjs => {
-            "Number of Adjudications".to_string()
+            "number of adjudications".to_string()
         }
-        TeamStandingsMetricsItemMetric::Firsts => "Firsts".to_string(),
-        TeamStandingsMetricsItemMetric::Seconds => "Seconds".to_string(),
-        TeamStandingsMetricsItemMetric::Thirds => "Thirds".to_string(),
+        TeamStandingsMetricsItemMetric::Firsts => "firsts".to_string(),
+        TeamStandingsMetricsItemMetric::Seconds => "seconds".to_string(),
+        TeamStandingsMetricsItemMetric::Thirds => "thirds".to_string(),
         TeamStandingsMetricsItemMetric::NumIron => {
-            "Number of Iron Persons".to_string()
+            "number of iron persons".to_string()
         }
-        TeamStandingsMetricsItemMetric::Wbw => "Who Beat Whom".to_string(),
+        TeamStandingsMetricsItemMetric::Wbw => "who beat whom".to_string(),
     }
 }
